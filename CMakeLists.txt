@@ -22,7 +22,12 @@ add_executable(VulcanCAD
     src/app/Window.cpp
     src/renderer/VulkanContext.cpp
     src/renderer/RenderFrame.cpp
+    src/scene/Camera.cpp
+    src/io/CameraSession.cpp
     src/git/LocalRepoManager.cpp
+    src/ui/FeatureTreePanel.cpp
+    src/ui/ViewportPanel.cpp
+    src/ui/PropertiesPanel.cpp
 )
 
 target_include_directories(VulcanCAD PRIVATE src)

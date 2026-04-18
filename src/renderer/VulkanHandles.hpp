@@ -278,4 +278,39 @@ struct command_pool {
     [[nodiscard]] VkCommandPool get() const { return handle; }
 };
 
+struct descriptor_pool {
+    VkDevice owner = VK_NULL_HANDLE;
+    VkDescriptorPool handle = VK_NULL_HANDLE;
+
+    descriptor_pool() = default;
+    descriptor_pool(VkDevice device, VkDescriptorPool value) : owner(device), handle(value) {}
+
+    descriptor_pool(const descriptor_pool&) = delete;
+    descriptor_pool& operator=(const descriptor_pool&) = delete;
+
+    descriptor_pool(descriptor_pool&& other) noexcept
+        : owner(std::exchange(other.owner, VK_NULL_HANDLE)),
+          handle(std::exchange(other.handle, VK_NULL_HANDLE)) {}
+
+    descriptor_pool& operator=(descriptor_pool&& other) noexcept {
+        if (this != &other) {
+            reset();
+            owner = std::exchange(other.owner, VK_NULL_HANDLE);
+            handle = std::exchange(other.handle, VK_NULL_HANDLE);
+        }
+        return *this;
+    }
+
+    ~descriptor_pool() { reset(); }
+
+    void reset() {
+        if (owner != VK_NULL_HANDLE && handle != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(owner, handle, nullptr);
+            handle = VK_NULL_HANDLE;
+        }
+    }
+
+    [[nodiscard]] VkDescriptorPool get() const { return handle; }
+};
+
 }  // namespace vk_wrap

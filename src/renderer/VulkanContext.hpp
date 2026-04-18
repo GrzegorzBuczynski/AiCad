@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <SDL3/SDL.h>
+#include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
 #include "renderer/RenderFrame.hpp"
@@ -66,10 +67,66 @@ public:
     [[nodiscard]] VkDevice device() const;
 
     /**
+     * @brief Vulkan instance accessor.
+     * @return Vulkan instance handle.
+     */
+    [[nodiscard]] VkInstance instance() const;
+
+    /**
+     * @brief Physical device accessor.
+     * @return Vulkan physical device handle.
+     */
+    [[nodiscard]] VkPhysicalDevice physical_device() const;
+
+    /**
+     * @brief Graphics queue accessor.
+     * @return Vulkan queue handle.
+     */
+    [[nodiscard]] VkQueue graphics_queue() const;
+
+    /**
      * @brief Graphics queue family index accessor.
      * @return Queue family index.
      */
     [[nodiscard]] uint32_t graphics_queue_family_index() const;
+
+    /**
+     * @brief Returns swapchain image count.
+     * @return Number of swapchain images.
+     */
+    [[nodiscard]] uint32_t swapchain_image_count() const;
+
+    /**
+     * @brief Returns swapchain image format.
+     * @return Swapchain image format.
+     */
+    [[nodiscard]] VkFormat swapchain_format() const;
+
+    /**
+     * @brief Stores the current camera matrices for viewport rendering.
+     * @param view View matrix.
+     * @param projection Projection matrix.
+     * @param view_projection Combined view-projection matrix.
+     */
+    void set_camera_matrices(const glm::mat4& view, const glm::mat4& projection, const glm::mat4& view_projection);
+
+    /**
+     * @brief Returns the last camera view matrix.
+     * @return View matrix.
+     */
+    [[nodiscard]] const glm::mat4& view_matrix() const;
+
+    /**
+     * @brief Returns the last camera projection matrix.
+     * @return Projection matrix.
+     */
+    [[nodiscard]] const glm::mat4& projection_matrix() const;
+
+    /**
+     * @brief Returns the last camera view-projection matrix.
+     * @return View-projection matrix.
+     */
+    [[nodiscard]] const glm::mat4& view_projection_matrix() const;
 
 private:
     bool create_instance();
@@ -100,6 +157,10 @@ private:
     VkColorSpaceKHR swapchain_color_space_ = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     VkExtent2D swapchain_extent_{0U, 0U};
     bool vsync_enabled_ = true;
+
+    glm::mat4 camera_view_{};
+    glm::mat4 camera_projection_{};
+    glm::mat4 camera_view_projection_{};
 };
 
 }  // namespace renderer

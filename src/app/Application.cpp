@@ -5,7 +5,10 @@
 #include <string_view>
 
 #include <SDL3/SDL.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <nlohmann/json.hpp>
 
 namespace {
@@ -133,6 +136,18 @@ bool Application::init() {
         return false;
     }
 
+    if (!init_imgui_backend()) {
+        last_error_ = "Failed to initialize Dear ImGui backend";
+        return false;
+    }
+
+    if (io::CameraSession::load("session/camera.json", camera_)) {
+        camera_session_loaded_ = true;
+    }
+
+    camera_.set_viewport_size(static_cast<float>(settings_.width), static_cast<float>(settings_.height));
+    sync_camera_to_viewport();
+
     running_ = true;
     return true;
 }
@@ -141,7 +156,9 @@ void Application::run() {
     while (running_) {
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL3_ProcessEvent(&event);
             window_.process_event(event);
+            camera_.handle_event(event);
             if (event.type == SDL_EVENT_QUIT) {
                 running_ = false;
             }
@@ -156,6 +173,8 @@ void Application::run() {
                 window_.width(),
                 window_.height(),
                 settings_.vsync);
+            camera_.set_viewport_size(static_cast<float>(window_.width()), static_cast<float>(window_.height()));
+            sync_camera_to_viewport();
             window_.clear_resize_flag();
             if (!recreated) {
                 running_ = false;
@@ -174,6 +193,7 @@ void Application::run() {
 }
 
 void Application::shutdown() {
+    persist_camera_session();
     g_orchestrator.shutdown();
     shutdown_imgui();
 
@@ -259,20 +279,96 @@ bool Application::init_imgui() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = "assets/env/imgui_layout.ini";
 
-    // Build font atlas explicitly until ImGui renderer backend is integrated.
-    unsigned char* pixels = nullptr;
-    int font_width = 0;
-    int font_height = 0;
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &font_width, &font_height);
-
     ImGui::StyleColorsDark();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.95f, 0.97f, 1.0f);
+    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.0f);
+    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.91f, 0.93f, 0.96f, 1.0f);
+    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.84f, 0.88f, 0.94f, 1.0f);
+    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.77f, 0.84f, 0.93f, 1.0f);
+    style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.93f, 0.95f, 0.98f, 1.0f);
+    style.Colors[ImGuiCol_Header] = ImVec4(0.80f, 0.86f, 0.95f, 1.0f);
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.70f, 0.82f, 0.96f, 1.0f);
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.56f, 0.74f, 0.94f, 1.0f);
+    style.Colors[ImGuiCol_Button] = ImVec4(0.86f, 0.90f, 0.97f, 1.0f);
+    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.74f, 0.84f, 0.96f, 1.0f);
+    style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.62f, 0.76f, 0.94f, 1.0f);
+    style.Colors[ImGuiCol_Text] = ImVec4(0.12f, 0.16f, 0.22f, 1.0f);
+    style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.42f, 0.47f, 0.55f, 1.0f);
+    style.Colors[ImGuiCol_Border] = ImVec4(0.73f, 0.79f, 0.88f, 1.0f);
+
+    dock_layout_built_ = false;
     imgui_initialized_ = true;
+    return true;
+}
+
+bool Application::init_imgui_backend() {
+    if (!ImGui_ImplSDL3_InitForVulkan(window_.native_handle())) {
+        return false;
+    }
+
+    if (imgui_descriptor_pool_.get() == VK_NULL_HANDLE) {
+        VkDescriptorPoolSize pool_sizes[] = {
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+        };
+
+        VkDescriptorPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 2000;
+        pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
+        pool_info.pPoolSizes = pool_sizes;
+
+        VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+        if (vkCreateDescriptorPool(vulkan_context_.device(), &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) {
+            return false;
+        }
+
+        imgui_descriptor_pool_ = vk_wrap::descriptor_pool(vulkan_context_.device(), descriptor_pool);
+    }
+
+    imgui_color_attachment_formats_[0] = vulkan_context_.swapchain_format();
+    imgui_pipeline_rendering_info_ = {};
+    imgui_pipeline_rendering_info_.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    imgui_pipeline_rendering_info_.colorAttachmentCount = static_cast<uint32_t>(imgui_color_attachment_formats_.size());
+    imgui_pipeline_rendering_info_.pColorAttachmentFormats = imgui_color_attachment_formats_.data();
+
+    ImGui_ImplVulkan_InitInfo init_info{};
+    init_info.ApiVersion = VK_API_VERSION_1_3;
+    init_info.Instance = vulkan_context_.instance();
+    init_info.PhysicalDevice = vulkan_context_.physical_device();
+    init_info.Device = vulkan_context_.device();
+    init_info.QueueFamily = vulkan_context_.graphics_queue_family_index();
+    init_info.Queue = vulkan_context_.graphics_queue();
+    init_info.DescriptorPool = imgui_descriptor_pool_.get();
+    init_info.DescriptorPoolSize = 0;
+    init_info.MinImageCount = 2;
+    init_info.ImageCount = vulkan_context_.swapchain_image_count();
+    init_info.UseDynamicRendering = true;
+    init_info.Allocator = nullptr;
+    init_info.CheckVkResultFn = nullptr;
+    init_info.MinAllocationSize = 1024 * 1024;
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo = imgui_pipeline_rendering_info_;
+    init_info.PipelineInfoForViewports.PipelineRenderingCreateInfo = imgui_pipeline_rendering_info_;
+
+    if (!ImGui_ImplVulkan_Init(&init_info)) {
+        return false;
+    }
+
+    imgui_backend_initialized_ = true;
     return true;
 }
 
 void Application::shutdown_imgui() {
     if (!imgui_initialized_) {
         return;
+    }
+
+    if (imgui_backend_initialized_) {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplSDL3_Shutdown();
+        imgui_backend_initialized_ = false;
     }
 
     ImGui::DestroyContext();
@@ -308,23 +404,139 @@ void Application::build_docked_layout() {
     ImGui::PopStyleVar(2);
 
     const ImGuiID dockspace_id = ImGui::GetID("VulcanCADDockspace");
-    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+    if (!dock_layout_built_) {
+        build_initial_dock_layout();
+    }
 
     ImGui::End();
 
-    ImGui::Begin("FeatureTree");
-    ImGui::TextUnformatted("Parametric features and sketches");
-    ImGui::End();
+    draw_menu_bar();
 
-    ImGui::Begin("Viewport");
-    ImGui::TextUnformatted("Vulkan viewport output");
-    ImGui::End();
+    feature_tree_panel_.draw();
+    viewport_panel_.draw();
+    properties_panel_.draw();
 
-    ImGui::Begin("Properties");
-    ImGui::TextUnformatted("Selection and parameter controls");
-    ImGui::End();
+    draw_status_bar();
 
     ImGui::Render();
+}
+
+void Application::draw_menu_bar() {
+    if (!ImGui::BeginMainMenuBar()) {
+        return;
+    }
+
+    if (ImGui::BeginMenu("File")) {
+        ImGui::MenuItem("New", "Ctrl+N");
+        ImGui::MenuItem("Open", "Ctrl+O");
+        ImGui::MenuItem("Save", "Ctrl+S");
+        ImGui::Separator();
+        if (ImGui::MenuItem("Exit")) {
+            running_ = false;
+        }
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Edit")) {
+        ImGui::MenuItem("Undo", "Ctrl+Z", false, false);
+        ImGui::MenuItem("Redo", "Ctrl+Y", false, false);
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Insert")) {
+        ImGui::MenuItem("Sketch");
+        ImGui::MenuItem("Extrude");
+        ImGui::MenuItem("Fillet");
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Tools")) {
+        ImGui::MenuItem("Measure");
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("View")) {
+        ImGui::MenuItem("Shaded", nullptr, true);
+        ImGui::MenuItem("Wireframe");
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("AI")) {
+        ImGui::MenuItem("Open AI Panel");
+        ImGui::MenuItem("Submit Proposal");
+        ImGui::EndMenu();
+    }
+
+    ImGui::EndMainMenuBar();
+}
+
+void Application::draw_status_bar() {
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float status_bar_height = 24.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(viewport->Pos.x, viewport->Pos.y + viewport->Size.y - status_bar_height));
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, status_bar_height));
+    ImGui::SetNextWindowViewport(viewport->ID);
+
+    constexpr ImGuiWindowFlags status_flags = ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
+    ImGui::Begin("StatusBar", nullptr, status_flags);
+    ImGui::PopStyleVar(3);
+
+    const ImGuiIO& io = ImGui::GetIO();
+    ImGui::Text("Mouse: %.0f, %.0f", io.MousePos.x, io.MousePos.y);
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+    ImGui::Text("Features: 0");
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+    ImGui::Text("FPS: %.1f", io.Framerate);
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
+    ImGui::Text("Camera: %s", camera_.state().projection_mode == scene::ProjectionMode::perspective ? "perspective" : "orthographic");
+
+    ImGui::End();
+}
+
+void Application::build_initial_dock_layout() {
+    ImGui::DockBuilderRemoveNode(ImGui::GetID("VulcanCADDockspace"));
+    const ImGuiID dockspace_id = ImGui::DockBuilderAddNode(
+        ImGui::GetID("VulcanCADDockspace"),
+        ImGuiDockNodeFlags_DockSpace);
+
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+    ImGuiID left_id = dockspace_id;
+    ImGuiID center_id = dockspace_id;
+    ImGuiID right_id = dockspace_id;
+
+    const float viewport_width = viewport->Size.x > 1.0f ? viewport->Size.x : 1920.0f;
+    const float left_ratio = 240.0f / viewport_width;
+    const float right_ratio = 280.0f / viewport_width;
+
+    ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, left_ratio, &left_id, &center_id);
+    ImGui::DockBuilderSplitNode(center_id, ImGuiDir_Right, right_ratio, &right_id, &center_id);
+
+    ImGui::DockBuilderDockWindow("FeatureTree", left_id);
+    ImGui::DockBuilderDockWindow("Viewport", center_id);
+    ImGui::DockBuilderDockWindow("Properties", right_id);
+
+    ImGui::DockBuilderFinish(dockspace_id);
+    dock_layout_built_ = true;
 }
 
 bool Application::render_vulkan_frame() {
@@ -339,7 +551,14 @@ bool Application::render_vulkan_frame() {
         return recreated;
     }
 
+    ImGui_ImplSDL3_NewFrame();
+    ImGui_ImplVulkan_NewFrame();
+
     build_docked_layout();
+
+    sync_camera_to_viewport();
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.command_buffer);
 
     if (!vulkan_context_.end_frame(frame, image_index)) {
         return false;
@@ -347,6 +566,23 @@ bool Application::render_vulkan_frame() {
 
     render_frame_.advance();
     return true;
+}
+
+void Application::sync_camera_to_viewport() {
+    const float width = static_cast<float>(std::max(window_.width(), 1U));
+    const float height = static_cast<float>(std::max(window_.height(), 1U));
+    const float aspect = width / height;
+
+    const glm::mat4 view = camera_.view_matrix();
+    const glm::mat4 projection = camera_.projection_matrix(aspect);
+    const glm::mat4 view_projection = projection * view;
+
+    vulkan_context_.set_camera_matrices(view, projection, view_projection);
+    viewport_panel_.set_camera_matrices(view, projection, view_projection);
+}
+
+void Application::persist_camera_session() const {
+    io::CameraSession::save("session/camera.json", camera_);
 }
 
 }  // namespace app

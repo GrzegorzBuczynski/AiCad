@@ -141,9 +141,9 @@ bool VulkanContext::begin_frame(frame_resources& frame, uint32_t* out_image_inde
         &to_color);
 
     VkClearValue clear_value{};
-    clear_value.color.float32[0] = 0.08F;
-    clear_value.color.float32[1] = 0.10F;
-    clear_value.color.float32[2] = 0.13F;
+    clear_value.color.float32[0] = 0.94F;
+    clear_value.color.float32[1] = 0.95F;
+    clear_value.color.float32[2] = 0.97F;
     clear_value.color.float32[3] = 1.00F;
 
     VkRenderingAttachmentInfo color_attachment{};
@@ -244,8 +244,46 @@ VkDevice VulkanContext::device() const {
     return device_.get();
 }
 
+VkInstance VulkanContext::instance() const {
+    return instance_.get();
+}
+
+VkPhysicalDevice VulkanContext::physical_device() const {
+    return physical_device_;
+}
+
+VkQueue VulkanContext::graphics_queue() const {
+    return graphics_queue_;
+}
+
 uint32_t VulkanContext::graphics_queue_family_index() const {
     return graphics_queue_family_index_;
+}
+
+uint32_t VulkanContext::swapchain_image_count() const {
+    return static_cast<uint32_t>(swapchain_images_.size());
+}
+
+VkFormat VulkanContext::swapchain_format() const {
+    return swapchain_format_;
+}
+
+void VulkanContext::set_camera_matrices(const glm::mat4& view, const glm::mat4& projection, const glm::mat4& view_projection) {
+    camera_view_ = view;
+    camera_projection_ = projection;
+    camera_view_projection_ = view_projection;
+}
+
+const glm::mat4& VulkanContext::view_matrix() const {
+    return camera_view_;
+}
+
+const glm::mat4& VulkanContext::projection_matrix() const {
+    return camera_projection_;
+}
+
+const glm::mat4& VulkanContext::view_projection_matrix() const {
+    return camera_view_projection_;
 }
 
 bool VulkanContext::create_instance() {
