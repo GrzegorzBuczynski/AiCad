@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAD/AI Modeling System — LLM Prompt Engineering Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --bg2: #0f1216;
+    --bg3: #141820;
+    --bg4: #1a2030;
+    --border: #1e2840;
+    --border2: #243050;
+    --accent: #3d7fff;
+    --accent2: #00c8a0;
+    --accent3: #ff6b35;
+    --accent4: #c8a0ff;
+    --text: #c8d4e8;
+    --text2: #7a8fb5;
+    --text3: #4a5878;
+    --text-bright: #e8f0ff;
+    --yellow: #ffd166;
+    --red: #ff4d6a;
+    --green: #00c896;
+    --phase1: #3d7fff;
+    --phase2: #00c8a0;
+    --phase3: #ff6b35;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+    --body: 'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.75;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* --- SCAN LINES EFFECT --- */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* --- LAYOUT --- */
+  .shell {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+  }
+
+  /* --- SIDEBAR NAV --- */
+  .nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 0 0 2rem 0;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .nav-header {
+    padding: 1.5rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.75rem;
+  }
+
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--accent2);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .nav-title {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.3;
+  }
+
+  .nav-section {
+    padding: 0 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .nav-section-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text3);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 0.75rem 0.5rem 0.3rem;
+  }
+
+  .nav a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 12.5px;
+    color: var(--text2);
+    transition: all 0.15s;
+    line-height: 1.3;
+  }
+
+  .nav a:hover {
+    background: var(--bg4);
+    color: var(--text-bright);
+  }
+
+  .nav a .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .nav a.p1 .dot { background: var(--phase1); }
+  .nav a.p2 .dot { background: var(--phase2); }
+  .nav a.p3 .dot { background: var(--phase3); }
+  .nav a.top .dot { background: var(--text3); }
+
+  .nav-version {
+    margin-top: auto;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* --- MAIN CONTENT --- */
+  .main {
+    padding: 4rem 5rem 6rem 4rem;
+    max-width: 900px;
+  }
+
+  /* --- HERO SECTION --- */
+  .hero {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 3rem;
+    margin-bottom: 3.5rem;
+  }
+
+  .hero-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent2);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .hero-badge::before {
+    content: '';
+    display: block;
+    width: 24px;
+    height: 1px;
+    background: var(--accent2);
+  }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 800;
+    color: var(--text-bright);
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.02em;
+  }
+
+  .hero h1 span {
+    color: var(--accent);
+  }
+
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text2);
+    max-width: 600px;
+    line-height: 1.7;
+    margin-bottom: 2rem;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .meta-item {
+    background: var(--bg3);
+    padding: 1rem 1.25rem;
+  }
+
+  .meta-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+
+  .meta-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent2);
+    font-weight: 500;
+  }
+
+  /* --- SECTIONS --- */
+  .section {
+    margin-bottom: 4rem;
+    scroll-margin-top: 2rem;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: -0.01em;
+  }
+
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    margin-left: auto;
+  }
+
+  .tag-p1 { background: rgba(61,127,255,0.15); color: var(--phase1); border: 1px solid rgba(61,127,255,0.3); }
+  .tag-p2 { background: rgba(0,200,160,0.15); color: var(--phase2); border: 1px solid rgba(0,200,160,0.3); }
+  .tag-p3 { background: rgba(255,107,53,0.15); color: var(--phase3); border: 1px solid rgba(255,107,53,0.3); }
+  .tag-sys { background: rgba(200,160,255,0.15); color: var(--accent4); border: 1px solid rgba(200,160,255,0.3); }
+
+  /* --- PHASE CARDS --- */
+  .phase-banner {
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 2rem;
+    border: 1px solid;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    gap: 1.5rem;
+  }
+
+  .phase-banner.p1 { background: rgba(61,127,255,0.05); border-color: rgba(61,127,255,0.25); }
+  .phase-banner.p2 { background: rgba(0,200,160,0.05); border-color: rgba(0,200,160,0.25); }
+  .phase-banner.p3 { background: rgba(255,107,53,0.05); border-color: rgba(255,107,53,0.25); }
+
+  .phase-icon {
+    width: 44px; height: 44px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .p1 .phase-icon { background: rgba(61,127,255,0.15); color: var(--phase1); }
+  .p2 .phase-icon { background: rgba(0,200,160,0.15); color: var(--phase2); }
+  .p3 .phase-icon { background: rgba(255,107,53,0.15); color: var(--phase3); }
+
+  .phase-banner h3 {
+    font-family: var(--display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 0.3rem;
+  }
+
+  .phase-banner p {
+    font-size: 13.5px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .phase-duration {
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .p1 .phase-duration { color: var(--phase1); }
+  .p2 .phase-duration { color: var(--phase2); }
+  .p3 .phase-duration { color: var(--phase3); }
+
+  /* --- CONTENT BLOCKS --- */
+  h2.sub {
+    font-family: var(--display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  p { color: var(--text); margin-bottom: 1rem; font-size: 14.5px; }
+
+  /* --- CODE BLOCKS (prompt templates) --- */
+  .prompt-block {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 1.25rem 1.5rem;
+    margin: 1.25rem 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text);
+    line-height: 1.7;
+    position: relative;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .prompt-block::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -1px; right: 0;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 0 7px 0 6px;
+  }
+
+  .prompt-block.p2-block { border-left-color: var(--phase2); }
+  .prompt-block.p2-block::before { background: var(--phase2); color: #0a0c0f; }
+  .prompt-block.p3-block { border-left-color: var(--phase3); }
+  .prompt-block.p3-block::before { background: var(--phase3); }
+  .prompt-block.sys-block { border-left-color: var(--accent4); }
+  .prompt-block.sys-block::before { background: var(--accent4); color: #0a0c0f; }
+
+  .kw { color: var(--accent); font-weight: 600; }
+  .kw2 { color: var(--accent2); }
+  .kw3 { color: var(--yellow); }
+  .kw4 { color: var(--accent4); }
+  .comment { color: var(--text3); font-style: italic; }
+
+  /* --- COMPONENT TABLES --- */
+  .comp-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0 1.5rem;
+    font-size: 13px;
+  }
+
+  .comp-table th {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text3);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .comp-table td {
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+
+  .comp-table tr:last-child td { border-bottom: none; }
+  .comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .comp-table td:first-child {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--accent2);
+    white-space: nowrap;
+  }
+
+  .comp-table td.pri {
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+
+  td.hi { color: var(--red); }
+  td.med { color: var(--yellow); }
+  td.lo { color: var(--green); }
+
+  /* --- ARCHITECTURE DIAGRAM (pure CSS) --- */
+  .arch-diagram {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 1.5rem 0;
+  }
+
+  .arch-row {
+    display: flex;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .arch-row:first-child { background: transparent; border-bottom: 1px solid var(--border); }
+
+  .arch-cell {
+    flex: 1;
+    background: var(--bg3);
+    padding: 1rem 1.25rem;
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .arch-cell.header {
+    background: var(--bg2);
+    min-height: auto;
+    padding: 0.6rem 1.25rem;
+    justify-content: center;
+  }
+
+  .arch-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text3);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .arch-title {
+    font-family: var(--display);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-bright);
+  }
+
+  .arch-sub {
+    font-size: 11.5px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+
+  .arch-cell.blue { border-top: 2px solid var(--phase1); }
+  .arch-cell.green { border-top: 2px solid var(--phase2); }
+  .arch-cell.orange { border-top: 2px solid var(--phase3); }
+  .arch-cell.purple { border-top: 2px solid var(--accent4); }
+
+  /* --- FEATURE CARDS --- */
+  .feat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 1rem 0 1.5rem;
+  }
+
+  .feat-card {
+    background: var(--bg3);
+    padding: 1.25rem 1.5rem;
+  }
+
+  .feat-card h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .feat-card h4 .icon {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .ic-b { background: rgba(61,127,255,0.2); color: var(--phase1); }
+  .ic-g { background: rgba(0,200,160,0.2); color: var(--phase2); }
+  .ic-o { background: rgba(255,107,53,0.2); color: var(--phase3); }
+  .ic-p { background: rgba(200,160,255,0.2); color: var(--accent4); }
+  .ic-y { background: rgba(255,209,102,0.2); color: var(--yellow); }
+  .ic-r { background: rgba(255,77,106,0.2); color: var(--red); }
+
+  .feat-card p {
+    font-size: 12.5px;
+    color: var(--text2);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* --- STEP FLOW --- */
+  .step-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 1rem 0 1.5rem;
+    position: relative;
+  }
+
+  .step-flow::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: 40px;
+    bottom: 20px;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--accent), var(--phase2), var(--phase3));
+  }
+
+  .step-item {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 1rem;
+    padding: 0 0 1.5rem 0;
+  }
+
+  .step-num {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+
+  .step-num.blue { background: rgba(61,127,255,0.15); color: var(--phase1); border: 1px solid rgba(61,127,255,0.4); }
+  .step-num.green { background: rgba(0,200,160,0.15); color: var(--phase2); border: 1px solid rgba(0,200,160,0.4); }
+  .step-num.orange { background: rgba(255,107,53,0.15); color: var(--phase3); border: 1px solid rgba(255,107,53,0.4); }
+
+  .step-content h4 {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 0.25rem;
+    padding-top: 10px;
+  }
+
+  .step-content p {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* --- INLINE CODE --- */
+  code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--bg4);
+    color: var(--accent2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border2);
+  }
+
+  /* --- DIVIDER --- */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0;
+  }
+
+  /* --- CALLOUT BOXES --- */
+  .callout {
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0 1.5rem;
+    font-size: 13.5px;
+    line-height: 1.6;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    border: 1px solid;
+  }
+
+  .callout.info { background: rgba(61,127,255,0.07); border-color: rgba(61,127,255,0.25); color: var(--text); }
+  .callout.warn { background: rgba(255,209,102,0.07); border-color: rgba(255,209,102,0.25); color: var(--text); }
+  .callout.tip  { background: rgba(0,200,160,0.07); border-color: rgba(0,200,160,0.25); color: var(--text); }
+
+  .callout-icon {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  .callout.info .callout-icon { color: var(--phase1); }
+  .callout.warn .callout-icon { color: var(--yellow); }
+  .callout.tip  .callout-icon { color: var(--phase2); }
+
+  /* --- LIST STYLES --- */
+  ul.styled, ol.styled {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0 1rem;
+    font-size: 13.5px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+
+  ul.styled li, ol.styled li { margin-bottom: 0.3rem; }
+
+  ul.styled li::marker { color: var(--accent); }
+  ol.styled li::marker { color: var(--accent2); font-family: var(--mono); font-size: 11px; }
+
+  /* --- FILE TREE --- */
+  .file-tree {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--text2);
+    margin: 1rem 0 1.5rem;
+  }
+
+  .ft-dir { color: var(--accent2); }
+  .ft-file { color: var(--text2); }
+  .ft-ext { color: var(--accent4); }
+  .ft-comment { color: var(--text3); }
+  .ft-root { color: var(--text-bright); font-weight: 600; }
+
+  /* --- MILESTONE TABLE --- */
+  .milestone-row {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    gap: 1rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    font-size: 13px;
+  }
+
+  .milestone-row:last-child { border-bottom: none; }
+
+  .milestone-phase {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .mp1 { background: rgba(61,127,255,0.15); color: var(--phase1); }
+  .mp2 { background: rgba(0,200,160,0.15); color: var(--phase2); }
+  .mp3 { background: rgba(255,107,53,0.15); color: var(--phase3); }
+
+  .milestone-name { color: var(--text); }
+  .milestone-check { color: var(--text3); font-family: var(--mono); font-size: 11px; }
+
+  /* --- JSON HIGHLIGHT --- */
+  .json-block {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1rem 0 1.5rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.8;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .js-key { color: var(--accent2); }
+  .js-str { color: var(--yellow); }
+  .js-num { color: var(--accent); }
+  .js-bool { color: var(--accent4); }
+  .js-null { color: var(--red); }
+  .js-punc { color: var(--text3); }
+  .js-comment { color: var(--text3); font-style: italic; }
+
+  /* --- SECTION ANCHOR JUMP LINK --- */
+  .anchor-link {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    text-decoration: none;
+    margin-left: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .section-title:hover .anchor-link { opacity: 1; }
+
+  /* --- PROGRESS TRACKER --- */
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 0.5rem 0 1rem;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s;
+  }
+
+  .pf1 { background: linear-gradient(90deg, var(--phase1), var(--accent4)); width: 33%; }
+  .pf2 { background: linear-gradient(90deg, var(--phase2), var(--phase1)); width: 66%; }
+  .pf3 { background: linear-gradient(90deg, var(--phase3), var(--phase2)); width: 100%; }
+
+  /* --- FOOTER --- */
+  .doc-footer {
+    border-top: 1px solid var(--border);
+    padding-top: 2rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* responsive */
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .nav { position: relative; height: auto; }
+    .main { padding: 2rem 1.5rem 4rem; }
+    .meta-grid { grid-template-columns: 1fr 1fr; }
+    .feat-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ===================== SIDEBAR NAV ===================== -->
+<nav class="nav">
+  <div class="nav-header">
+    <div class="nav-logo">CAD/AI System</div>
+    <div class="nav-title">LLM Prompt Engineering Guide v1.0</div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Overview</div>
+    <a href="#overview" class="top"><span class="dot"></span>Project Overview</a>
+    <a href="#architecture" class="top"><span class="dot"></span>System Architecture</a>
+    <a href="#tech-stack" class="top"><span class="dot"></span>Technology Stack</a>
+    <a href="#json-format" class="top"><span class="dot"></span>Model File Format (JSON)</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Phase 1 — Foundation</div>
+    <a href="#phase1-overview" class="p1"><span class="dot"></span>Phase Overview</a>
+    <a href="#p1-window" class="p1"><span class="dot"></span>1.1 Window & Renderer</a>
+    <a href="#p1-vulkan" class="p1"><span class="dot"></span>1.2 Vulkan Pipeline</a>
+    <a href="#p1-input" class="p1"><span class="dot"></span>1.3 Input System</a>
+    <a href="#p1-prompt" class="p1"><span class="dot"></span>1.4 Phase 1 Prompts</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Phase 2 — CAD Core</div>
+    <a href="#phase2-overview" class="p2"><span class="dot"></span>Phase Overview</a>
+    <a href="#p2-geometry" class="p2"><span class="dot"></span>2.1 Geometry Engine</a>
+    <a href="#p2-sketch" class="p2"><span class="dot"></span>2.2 Sketch Subsystem</a>
+    <a href="#p2-features" class="p2"><span class="dot"></span>2.3 Feature Tree</a>
+    <a href="#p2-json-io" class="p2"><span class="dot"></span>2.4 JSON I/O System</a>
+    <a href="#p2-prompt" class="p2"><span class="dot"></span>2.5 Phase 2 Prompts</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Phase 3 — AI/LLM</div>
+    <a href="#phase3-overview" class="p3"><span class="dot"></span>Phase Overview</a>
+    <a href="#p3-llm-bridge" class="p3"><span class="dot"></span>3.1 LLM Bridge Module</a>
+    <a href="#p3-ui-panel" class="p3"><span class="dot"></span>3.2 AI Panel UI</a>
+    <a href="#p3-json-edit" class="p3"><span class="dot"></span>3.3 JSON Edit → Regen</a>
+    <a href="#p3-catia-ux" class="p3"><span class="dot"></span>3.4 CATIA-Style UX</a>
+    <a href="#p3-prompt" class="p3"><span class="dot"></span>3.5 Phase 3 Prompts</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Reference</div>
+    <a href="#file-structure" class="top"><span class="dot"></span>Repo File Structure</a>
+    <a href="#milestones" class="top"><span class="dot"></span>Milestone Checklist</a>
+    <a href="#prompting-tips" class="top"><span class="dot"></span>Prompting Best Practices</a>
+  </div>
+
+  <div class="nav-version">
+    rev 2025-04 · C++20 · Vulkan 1.3<br>
+    CATIA V5 UX Reference · SpaceMouse post-MVP
+  </div>
+</nav>
+
+<!-- ===================== MAIN CONTENT ===================== -->
+<main class="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge">LLM Development Guide</div>
+    <h1>CAD/AI <span>Modeling</span><br>System Blueprint</h1>
+    <p class="hero-desc">
+      A structured 3-phase guide for prompting an LLM to build a professional parametric CAD application in C++. Covers graphics (Vulkan/DirectX), dual-mode modeling (mouse+keyboard / JSON), and integrated LLM assistance via OpenAI-compatible API.
+    </p>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Language</div>
+        <div class="meta-val">C++20</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Graphics</div>
+        <div class="meta-val">Vulkan 1.3</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">UX Reference</div>
+        <div class="meta-val">CATIA V5 (MVP)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Phases</div>
+        <div class="meta-val">3 (iterative)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== OVERVIEW =================== -->
+  <section class="section" id="overview">
+    <div class="section-header">
+      <span class="section-num">00</span>
+      <h2 class="section-title">Project Overview</h2>
+      <span class="section-tag tag-sys">OVERVIEW</span>
+    </div>
+
+    <p>This document is a structured guide for prompting an LLM (Claude, GPT-4, etc.) to build a production-grade parametric CAD application step by step. Each phase produces a running deliverable that extends the previous one. The guide is intentionally ordered from generic to specific — the further you read, the more detailed the prompts become.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">INFO</span>
+      <div>This is not executable code. It is a <strong>prompt engineering guide</strong> — each section tells you exactly how to frame your LLM prompts so the model builds each subsystem correctly, in order, with proper context handoff between phases. Local Git repository workflow is mandatory for AI-proposed changes.</div>
+    </div>
+
+    <h2 class="sub">Core Design Goals</h2>
+
+    <div class="feat-grid">
+      <div class="feat-card">
+        <h4><span class="icon ic-b">UI</span> Mouse + Keyboard Driven</h4>
+        <p>Primary interaction mode mirrors CATIA V5: toolbar commands, 3-button mouse navigation, hotkeys for sketch and feature operations.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-g">JS</span> JSON Model Format</h4>
+        <p>Every model is serialized to/from a human-readable JSON document. Users can edit models with a text editor; AI proposes JSON changes as Git commits, never as silent in-place edits.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-p">AI</span> Integrated LLM Panel</h4>
+        <p>Built-in chat panel connects to any OpenAI-compatible server by IP. The AI generates change proposals in pull-request style, checker validates them, and user decides whether to merge.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-o">VK</span> Vulkan / DirectX Graphics</h4>
+        <p>Default renderer is Vulkan 1.3. A compile-time option switches to DirectX 12 (D3D12). Abstracted via a thin RHI (Render Hardware Interface) layer.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-y">3D</span> CATIA V5 UX (MVP Scope)</h4>
+        <p>Layout follows CATIA V5: feature tree on left, 3D viewport center, specification panel right. SpaceMouse integration is explicitly deferred until after MVP.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-p">MOD</span> 2-Module Fault Isolation</h4>
+        <p>Main module orchestrates UI and task dispatch, worker module computes geometry/solver steps. If worker crashes, main process restarts it and retries with the same parameters.</p>
+      </div>
+      <div class="feat-card">
+        <h4><span class="icon ic-r">PP</span> Performance First</h4>
+        <p>C++20 throughout. SIMD for geometry math. Async geometry rebuild on worker threads. GPU culling via compute shaders. Target: 60 FPS at 1M+ faces.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== ARCHITECTURE =================== -->
+  <section class="section" id="architecture">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <h2 class="section-title">System Architecture</h2>
+      <span class="section-tag tag-sys">ARCH</span>
+    </div>
+
+    <p>The system is divided into five vertical layers and two runtime modules. Module 1 (main orchestrator) owns UI/state/undo, module 2 (geometry worker) computes solver and topology. If module 2 fails, module 1 restarts it and resubmits the queued request with bounded retry policy.</p>
+
+    <div class="arch-diagram">
+      <div class="arch-row">
+        <div class="arch-cell header"><div class="arch-label">Layer</div></div>
+        <div class="arch-cell header"><div class="arch-label">Components</div></div>
+        <div class="arch-cell header"><div class="arch-label">Language / Lib</div></div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-cell blue">
+          <div class="arch-label">Application</div>
+          <div class="arch-title">UI + LLM</div>
+        </div>
+        <div class="arch-cell blue">
+          <div class="arch-sub">Main window, toolbar, feature tree panel, properties panel, AI/LLM chat panel, JSON editor view, worker supervisor, retry queue, local Git repository manager, checker queue, rendering of last valid geometry snapshot</div>
+        </div>
+        <div class="arch-cell blue">
+          <div class="arch-sub">C++20, Dear ImGui, OpenAI-compat HTTP, libgit2 or git CLI</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-cell purple">
+          <div class="arch-label">CAD Core</div>
+          <div class="arch-title">Geometry</div>
+        </div>
+        <div class="arch-cell purple">
+          <div class="arch-sub">Sketch solver (constraint-based), feature builder (extrude/revolve/fillet), B-Rep topology, mesh tessellator, crash-contained worker process</div>
+        </div>
+        <div class="arch-cell purple">
+          <div class="arch-sub">C++20, Open CASCADE (OCCT) or custom BRep</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-cell green">
+          <div class="arch-label">Model I/O</div>
+          <div class="arch-title">JSON ↔ Tree</div>
+        </div>
+        <div class="arch-cell green">
+          <div class="arch-sub">Serializer / deserializer, intent-based rebuild delegation, branch rebuild from any node, undo/redo stack, file watcher for hot-reload</div>
+        </div>
+        <div class="arch-cell green">
+          <div class="arch-sub">C++20, nlohmann/json or simdjson</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-cell orange">
+          <div class="arch-label">Renderer</div>
+          <div class="arch-title">RHI → Vulkan / DX12</div>
+        </div>
+        <div class="arch-cell orange">
+          <div class="arch-sub">Thin RHI abstraction, Vulkan 1.3 backend (default), DirectX 12 backend (optional), scene graph, lighting, wireframe overlay</div>
+        </div>
+        <div class="arch-cell orange">
+          <div class="arch-sub">C++20, Vulkan SDK, D3D12 (optional), HLSL/GLSL shaders</div>
+        </div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-cell" style="border-top: 2px solid var(--text3);">
+          <div class="arch-label">Platform</div>
+          <div class="arch-title">OS / Input</div>
+        </div>
+        <div class="arch-cell" style="border-top: 2px solid var(--text3);">
+          <div class="arch-sub">Window creation, input events, file dialogs, IPC transport between modules, threading primitives</div>
+        </div>
+        <div class="arch-cell" style="border-top: 2px solid var(--text3);">
+          <div class="arch-sub">SDL3 or GLFW, named pipes / local sockets, std::thread / std::atomic</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== TECH STACK =================== -->
+  <section class="section" id="tech-stack">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <h2 class="section-title">Technology Stack</h2>
+      <span class="section-tag tag-sys">DEPS</span>
+    </div>
+
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th>Library / Tool</th>
+          <th>Role</th>
+          <th>Priority</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Vulkan 1.3 SDK</td><td>Primary 3D renderer</td><td class="pri hi">Required</td><td>VkDynamicRendering, ray queries</td></tr>
+        <tr><td>DirectX 12 (D3D12)</td><td>Alt renderer</td><td class="pri med">Optional</td><td>Compile flag: <code>USE_DX12</code></td></tr>
+        <tr><td>Dear ImGui</td><td>All UI panels</td><td class="pri hi">Required</td><td>ImGui Vulkan/DX12 backend</td></tr>
+        <tr><td>SDL3 or GLFW</td><td>Window + input</td><td class="pri hi">Required</td><td>SDL3 preferred for gamepad/HID</td></tr>
+        <tr><td>Open CASCADE (OCCT)</td><td>B-Rep geometry</td><td class="pri hi">Required</td><td>Or custom; OCCT is proven</td></tr>
+        <tr><td>nlohmann/json</td><td>JSON I/O</td><td class="pri hi">Required</td><td>Header-only, fast enough</td></tr>
+        <tr><td>libcurl or cpp-httplib</td><td>LLM HTTP client</td><td class="pri hi">Required</td><td>OpenAI /v1/chat/completions</td></tr>
+        <tr><td>Git (local repo) + libgit2 or git CLI</td><td>PR-style AI change governance</td><td class="pri hi">Required</td><td>Branch/commit/diff/check/merge pipeline</td></tr>
+        <tr><td>IPC runtime (named pipes / local sockets)</td><td>Main ↔ Worker module communication</td><td class="pri hi">Required</td><td>Request/response + heartbeat + restart handshake</td></tr>
+        <tr><td>GLM or Eigen</td><td>Math (SIMD)</td><td class="pri hi">Required</td><td>GLM for GPU-compatible types</td></tr>
+        <tr><td>CMake 3.28+</td><td>Build system</td><td class="pri hi">Required</td><td>Presets for Debug/Release/Asan</td></tr>
+        <tr><td>Catch2 v3</td><td>Unit testing</td><td class="pri lo">Recommended</td><td>Geometry + JSON roundtrip tests</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- =================== JSON FORMAT =================== -->
+  <section class="section" id="json-format">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <h2 class="section-title">Model File Format (JSON)</h2>
+      <span class="section-tag tag-sys">SPEC</span>
+    </div>
+
+    <p>The model file is the universal interface between human editing, AI proposals, and the CAD kernel. The schema is hierarchical (not flat): downstream features reference upstream feature IDs (for example, Extrude references a Profile/Sketch ID). AI never applies changes directly to active model state; it submits repository changes for review and merge.</p>
+
+    <div class="callout tip">
+      <span class="callout-icon">TIP</span>
+      <div>Keep the JSON schema simple and stable. Assign a <code>schema_version</code> field from day one so the LLM can reason about backward compatibility when you upgrade the format.</div>
+    </div>
+
+    <div class="json-block"><span class="js-comment">// example: bracket_v1.cadmodel.json</span>
+<span class="js-punc">{</span>
+  <span class="js-key">"schema_version"</span><span class="js-punc">:</span> <span class="js-str">"1.0"</span><span class="js-punc">,</span>
+  <span class="js-key">"name"</span><span class="js-punc">:</span> <span class="js-str">"Mounting Bracket"</span><span class="js-punc">,</span>
+  <span class="js-key">"units"</span><span class="js-punc">:</span> <span class="js-str">"mm"</span><span class="js-punc">,</span>
+  <span class="js-key">"parameters"</span><span class="js-punc">: {</span>
+    <span class="js-key">"base_width"</span><span class="js-punc">:</span>  <span class="js-num">60.0</span><span class="js-punc">,</span>
+    <span class="js-key">"wall_thickness"</span><span class="js-punc">:</span> <span class="js-num">3.5</span><span class="js-punc">,</span>
+    <span class="js-key">"height"</span><span class="js-punc">:</span> <span class="js-num">45.0</span>
+  <span class="js-punc">},</span>
+  <span class="js-key">"features"</span><span class="js-punc">: [</span>
+    <span class="js-punc">{</span>
+      <span class="js-key">"id"</span><span class="js-punc">:</span>   <span class="js-str">"feat_001"</span><span class="js-punc">,</span>
+      <span class="js-key">"type"</span><span class="js-punc">:</span> <span class="js-str">"Sketch"</span><span class="js-punc">,</span>
+      <span class="js-key">"plane"</span><span class="js-punc">:</span> <span class="js-str">"XY"</span><span class="js-punc">,</span>
+      <span class="js-key">"entities"</span><span class="js-punc">: [</span>
+        <span class="js-punc">{</span> <span class="js-key">"type"</span><span class="js-punc">:</span> <span class="js-str">"Rectangle"</span><span class="js-punc">,</span> <span class="js-key">"x"</span><span class="js-punc">:</span><span class="js-num">0</span><span class="js-punc">,</span> <span class="js-key">"y"</span><span class="js-punc">:</span><span class="js-num">0</span><span class="js-punc">,</span> <span class="js-key">"w"</span><span class="js-punc">:</span><span class="js-str">"#base_width"</span><span class="js-punc">,</span> <span class="js-key">"h"</span><span class="js-punc">:</span><span class="js-num">50</span> <span class="js-punc">}</span>
+      <span class="js-punc">]</span>
+    <span class="js-punc">},</span>
+    <span class="js-punc">{</span>
+      <span class="js-key">"id"</span><span class="js-punc">:</span>    <span class="js-str">"feat_002"</span><span class="js-punc">,</span>
+      <span class="js-key">"type"</span><span class="js-punc">:</span>  <span class="js-str">"Extrude"</span><span class="js-punc">,</span>
+      <span class="js-key">"profile_id"</span><span class="js-punc">:</span> <span class="js-str">"feat_001"</span><span class="js-punc">,</span>
+      <span class="js-key">"depth"</span><span class="js-punc">:</span>  <span class="js-str">"#height"</span><span class="js-punc">,</span>
+      <span class="js-key">"direction"</span><span class="js-punc">:</span> <span class="js-str">"normal"</span>
+    <span class="js-punc">},</span>
+    <span class="js-punc">{</span>
+      <span class="js-key">"id"</span><span class="js-punc">:</span>    <span class="js-str">"feat_003"</span><span class="js-punc">,</span>
+      <span class="js-key">"type"</span><span class="js-punc">:</span>  <span class="js-str">"Fillet"</span><span class="js-punc">,</span>
+      <span class="js-key">"edges"</span><span class="js-punc">:</span> <span class="js-str">"all_vertical"</span><span class="js-punc">,</span>
+      <span class="js-key">"radius"</span><span class="js-punc">:</span> <span class="js-str">"#wall_thickness"</span>
+    <span class="js-punc">}</span>
+  <span class="js-punc">],</span>
+  <span class="js-key">"metadata"</span><span class="js-punc">: {</span>
+    <span class="js-key">"author"</span><span class="js-punc">:</span>   <span class="js-str">"user"</span><span class="js-punc">,</span>
+    <span class="js-key">"modified"</span><span class="js-punc">:</span> <span class="js-str">"2025-04-18T12:00:00Z"</span><span class="js-key">,</span>
+    <span class="js-key">"source"</span><span class="js-punc">:</span>   <span class="js-str">"llm_assisted"</span>
+  <span class="js-punc">}</span>
+<span class="js-punc">}</span></div>
+
+    <p>Parameter references use the <code>#param_name</code> prefix so the kernel can distinguish literal values from references. Feature references use explicit IDs (for example <code>profile_id</code>) so dependencies remain deterministic. Rebuild delegation is intent-driven: rebuild happens when the user or orchestrator explicitly asks, not on every detected change.</p>
+  </section>
+
+  <hr class="divider">
+
+  <!-- =================== PHASE 1 =================== -->
+  <section class="section" id="phase1-overview">
+    <div class="section-header">
+      <span class="section-num">P1</span>
+      <h2 class="section-title">Phase 1 — Foundation</h2>
+      <span class="section-tag tag-p1">WEEKS 1–4</span>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill pf1"></div></div>
+
+    <div class="phase-banner p1">
+      <div class="phase-icon">P1</div>
+      <div>
+        <h3>Goal: A renderable, interactive window</h3>
+        <p>By end of Phase 1 you have: a Vulkan (or DX12) window rendering a 3D grid, an ImGui sidebar, mouse orbit/pan/zoom camera, and basic keyboard shortcut dispatch. No geometry yet — just the shell the rest will live in.</p>
+      </div>
+      <div class="phase-duration">4 WEEKS</div>
+    </div>
+
+    <h2 class="sub" id="p1-window">1.1 — Window & Application Shell</h2>
+    <p>The window system must be initialized before any renderer code. Prompt the LLM to create this before anything Vulkan-specific to avoid dependency tangles.</p>
+
+    <ul class="styled">
+      <li>SDL3 window with Vulkan surface capability and a hidden DX12 fallback path behind <code>#ifdef USE_DX12</code></li>
+      <li>Main loop: poll events → update → render → swap, targeting 60 Hz with frame-time budget tracking</li>
+      <li>Windowed and fullscreen mode toggle via <code>F11</code></li>
+      <li>Config file (<code>settings.json</code>) for renderer choice, window size, and LLM server IP/port</li>
+    </ul>
+
+    <h2 class="sub" id="p1-vulkan">1.2 — Vulkan Render Pipeline</h2>
+    <p>Vulkan setup is verbose. Give the LLM the exact feature list so it doesn't hallucinate extension names. Use Dynamic Rendering (no render pass objects) to keep the code manageable.</p>
+
+    <ul class="styled">
+      <li>Instance → Physical device selection (prefer discrete GPU) → Logical device with graphics + transfer + compute queues</li>
+      <li>Swapchain with mailbox or FIFO present mode (user-selectable in settings)</li>
+      <li>VkDynamicRendering extension — no <code>VkRenderPass</code> objects; attach color/depth at draw time</li>
+      <li>Mesh pipeline: vertex buffer (float3 pos, float3 normal, float2 uv), index buffer, push constants for MVP</li>
+      <li>Wireframe overlay: separate pipeline with <code>polygonMode = VK_POLYGON_MODE_LINE</code></li>
+      <li>ImGui Vulkan backend integrated as a secondary pass after geometry</li>
+    </ul>
+
+    <div class="callout warn">
+      <span class="callout-icon">WARN</span>
+      <div>Always ask the LLM to add Vulkan validation layer support (<code>VK_LAYER_KHRONOS_validation</code>) gated by a <code>DEBUG</code> compile flag. Validation catches driver-undefined behavior that would otherwise cause silent corruption or crashes.</div>
+    </div>
+
+    <h2 class="sub" id="p1-input">1.3 — Input & Camera System</h2>
+    <p>The camera must feel like CATIA V5: middle-mouse orbit, middle+Shift pan, scroll zoom. Document the exact mouse bindings in a comment block in the code so the LLM remembers them in future sessions.</p>
+
+    <ul class="styled">
+      <li>ArcBall orbit: middle mouse drag rotates around target point</li>
+      <li>Pan: middle mouse + Shift translates target</li>
+      <li>Zoom: scroll wheel or right-mouse drag (CATIA style, not FPS zoom)</li>
+      <li>Fit-to-all: <code>F</code> key frames all visible geometry</li>
+      <li>View presets: numpad 1/2/3 = front/top/right, numpad 0 = isometric</li>
+    </ul>
+
+    <h2 class="sub" id="p1-prompt">1.4 — Phase 1 LLM Prompt Templates</h2>
+    <p>Use these prompts verbatim (or adapt). The <strong>System prompt</strong> stays constant across all Phase 1 sessions. The <strong>Task prompts</strong> are single-session requests.</p>
+
+    <div class="prompt-block" data-label="PHASE 1 · SYSTEM PROMPT">You are a senior C++20 systems programmer building a professional parametric CAD application.
+The project is named <span class="kw">VulcanCAD</span>. Target platform: Windows 10/11 64-bit, Linux (Wayland/X11).
+
+<span class="kw2">Tech stack:</span> C++20, CMake 3.28, SDL3, Vulkan 1.3 (VkDynamicRendering), Dear ImGui 1.91, GLM, nlohmann/json.
+Optional: DirectX 12 behind <span class="kw3">#ifdef USE_DX12</span>. Compile flag: <span class="kw3">USE_DX12=ON</span>.
+
+<span class="kw2">Constraints:</span>
+- Performance critical: 60 FPS at 1M+ triangles target
+- No exceptions (use std::expected or error codes)
+- RAII everywhere — never naked new/delete
+- All Vulkan objects wrapped in custom RAII handles in namespace <span class="kw3">vk_wrap::</span>
+- Dear ImGui docked layout with 3 panels: FeatureTree (left), Viewport (center), Properties (right)
+- Runtime split into 2 modules: MainOrchestrator (module 1) and GeometryWorker (module 2)
+- Solver/geometry faults in module 2 must never crash module 1
+- On worker crash: module 1 restarts module 2 and retries request with same input payload
+
+<span class="kw2">Code style:</span> snake_case, 4-space indent, Doxygen comments on all public APIs.
+<span class="comment">// Always provide CMakeLists.txt changes alongside source files.</span></div>
+
+    <div class="prompt-block" data-label="PHASE 1 · TASK 1 — WINDOW SETUP">Create the application window and main loop using SDL3 and Vulkan.
+
+<span class="kw">Deliverables:</span>
+1. <span class="kw2">CMakeLists.txt</span> with targets: VulcanCAD (executable), find_package for Vulkan, SDL3, ImGui, GLM
+2. <span class="kw2">src/app/Application.hpp/.cpp</span> — main class with init(), run(), shutdown()
+3. <span class="kw2">src/app/Window.hpp/.cpp</span> — SDL3 window wrapper, handles resize events
+4. <span class="kw2">src/renderer/VulkanContext.hpp/.cpp</span> — instance, surface, device, queues, swapchain
+5. <span class="kw2">src/renderer/RenderFrame.hpp/.cpp</span> — per-frame sync objects (semaphores, fence)
+
+<span class="kw2">Config:</span> Load <span class="kw3">settings.json</span> at startup. Fields: width, height, renderer ("vulkan"/"dx12"), vsync (bool).
+
+<span class="comment">// Validation layers: enabled when compiled with -DDEBUG</span>
+<span class="comment">// Use VkDynamicRendering — no VkRenderPass objects</span></div>
+
+    <div class="prompt-block" data-label="PHASE 1 · TASK 2 — IMGUI LAYOUT">Set up Dear ImGui with the CATIA V5 docked panel layout.
+
+<span class="kw">Layout spec:</span>
+- Left panel (240px, resizable): <span class="kw2">FeatureTreePanel</span> — empty list for now
+- Center: <span class="kw2">Viewport</span> — full remaining space, renders to ImTextureID (offscreen Vulkan image)
+- Right panel (280px, resizable): <span class="kw2">PropertiesPanel</span> — empty for now
+- Top: <span class="kw2">MenuBar</span> — File, Edit, Insert, Tools, View, AI menus
+- Bottom status bar (24px): mouse coords, feature count, FPS counter
+
+<span class="kw2">Color theme:</span> Dark, matching CATIA V5 palette.
+<span class="kw3">ImVec4</span> bg = {0.13f, 0.14f, 0.17f, 1.0f}, panel = {0.10f, 0.11f, 0.14f, 1.0f}
+
+<span class="comment">// All panels in namespace ui:: with base class Panel { virtual void draw() = 0; }</span></div>
+
+    <div class="prompt-block" data-label="PHASE 1 · TASK 3 — CAMERA">Implement the 3D camera system matching CATIA V5 mouse navigation.
+
+<span class="kw">Camera class:</span> <span class="kw2">src/scene/Camera.hpp/.cpp</span>
+
+<span class="kw2">Controls:</span>
+  Middle mouse drag          → ArcBall orbit around target
+  Middle mouse + Shift drag  → Pan (translate target)
+  Scroll wheel               → Dolly zoom (not FOV zoom)
+  Right mouse drag (vertical)→ Zoom (CATIA alternate mode)
+  F key                      → Fit all (frame AABB of scene)
+  Numpad 1/2/3               → Front/Top/Right orthographic
+  Numpad 0                   → Isometric perspective
+  V key                      → Toggle perspective / orthographic
+
+<span class="comment">// Camera state: position, target, up, fov, near/far — all in Camera::State struct</span>
+<span class="comment">// Serialize camera state to JSON for session restore</span></div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- =================== PHASE 2 =================== -->
+  <section class="section" id="phase2-overview">
+    <div class="section-header">
+      <span class="section-num">P2</span>
+      <h2 class="section-title">Phase 2 — CAD Core</h2>
+      <span class="section-tag tag-p2">WEEKS 5–12</span>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill pf2"></div></div>
+
+    <div class="phase-banner p2">
+      <div class="phase-icon">P2</div>
+      <div>
+        <h3>Goal: Sketch → Extrude → Feature tree → JSON roundtrip</h3>
+        <p>Phase 2 builds the parametric CAD kernel. By the end you can create a sketch, apply constraints, extrude it into a solid, see the feature tree update, save to JSON, reload, and have the model regenerate correctly from scratch.</p>
+      </div>
+      <div class="phase-duration">8 WEEKS</div>
+    </div>
+
+    <h2 class="sub" id="p2-geometry">2.1 — Geometry Engine (OCCT or Custom BRep)</h2>
+
+    <p>Open CASCADE Technology (OCCT) is the industrial-strength choice. If the LLM struggles with OCCT API verbosity, you can scaffold a simpler custom BRep for Phase 2 and migrate to OCCT in Phase 3. Either way, keep geometry behind an interface:</p>
+
+    <div class="prompt-block p2-block" data-label="PHASE 2 · TASK 1 — GEOMETRY INTERFACE">Define the geometry abstraction layer.
+
+<span class="kw">File:</span> <span class="kw2">src/geometry/IGeometryKernel.hpp</span>
+
+<span class="kw2">Interface methods (pure virtual):</span>
+  createBox(float w, float h, float d)    → SolidHandle
+  createExtrude(const Profile&, float d)  → SolidHandle
+  createRevolve(const Profile&, float ang)→ SolidHandle
+  booleanUnion(SolidHandle a, b)          → SolidHandle
+  booleanCut(SolidHandle base, tool)      → SolidHandle
+  tessellate(SolidHandle, float chord)    → MeshData
+  computeAABB(SolidHandle)                → AABB
+
+<span class="kw">Implementations:</span>
+- <span class="kw2">OcctKernel.hpp/.cpp</span> using Open CASCADE 7.7
+- <span class="kw2">FallbackKernel.hpp/.cpp</span> using simple analytic primitives only
+
+<span class="comment">// SolidHandle is an opaque uint32_t ID — kernel manages lifetime</span>
+<span class="comment">// MeshData: std::vector&lt;Vertex&gt; + std::vector&lt;uint32_t&gt; indices</span>
+<span class="comment">// Tessellation runs async on thread pool, callback with MeshData when done</span></div>
+
+    <h2 class="sub" id="p2-sketch">2.2 — Sketch Subsystem</h2>
+
+    <p>The sketch editor is the most complex UI component. It needs a 2D constraint solver, entity drawing in the 3D viewport projected onto a plane, and a properties panel for dimensions.</p>
+
+    <div class="step-flow">
+      <div class="step-item">
+        <div class="step-num blue">1</div>
+        <div class="step-content">
+          <h4>Sketch Entity Model</h4>
+          <p>Lines, arcs, circles, points, construction geometry. Each entity has an ID and a set of free parameters (endpoints, radius, angle).</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num blue">2</div>
+        <div class="step-content">
+          <h4>Constraint Solver</h4>
+          <p>Geometric constraints: coincident, parallel, perpendicular, tangent, equal length, fixed. Dimensional: distance, angle, radius. Uses Newton-Raphson or SQP solver.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num blue">3</div>
+        <div class="step-content">
+          <h4>Sketch-to-Profile</h4>
+          <p>Extract closed wire profiles from solved sketch entities. Handle multiple loops (for holes). Output: <code>Profile</code> struct for the geometry kernel.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num blue">4</div>
+        <div class="step-content">
+          <h4>Sketch UI Layer</h4>
+          <p>Overlay drawn with ImGui DrawList on the viewport when sketch mode is active. Snap to grid, snap to entity endpoints, dimension annotation rendering.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt-block p2-block" data-label="PHASE 2 · TASK 2 — SKETCH SYSTEM">Implement the 2D sketch subsystem.
+
+<span class="kw">Files:</span> <span class="kw2">src/sketch/</span> — SketchEntity, SketchConstraint, SketchSolver, SketchDocument, SketchView
+
+<span class="kw2">SketchEntity variants (use std::variant or virtual):</span>
+  PointEntity   { vec2 pos }
+  LineEntity    { vec2 p1, p2 }
+  ArcEntity     { vec2 center; float r, angle_start, angle_end }
+  CircleEntity  { vec2 center; float radius }
+
+<span class="kw2">SketchConstraint variants:</span>
+  Coincident, Parallel, Perpendicular, Tangent, EqualLength,
+  FixedPoint, HorizontalConstraint, VerticalConstraint,
+  DistanceDim { float value }, AngleDim { float degrees }, RadiusDim { float value }
+
+<span class="kw2">Solver:</span>
+  Use incremental Newton-Raphson.
+  DOF counter: display in status bar (0 = fully constrained, green; &gt;0 = blue; -N = over-constrained, red).
+
+<span class="kw2">UI (SketchView):</span>
+  Draw via ImDrawList on viewport overlay.
+  Colors: unconstrained = blue, constrained = black/white, selected = orange, construction = dashed gray.
+  Grid: 1mm minor, 10mm major. Snap within 5px screen distance.
+
+<span class="comment">// Sketch is active while a Sketch feature node is double-clicked in FeatureTree</span>
+<span class="comment">// ESC closes sketch, triggers rebuild of dependent features</span></div>
+
+    <h2 class="sub" id="p2-features">2.3 — Feature Tree & Parametric Rebuild</h2>
+
+    <div class="prompt-block p2-block" data-label="PHASE 2 · TASK 3 — FEATURE TREE">Implement the parametric feature tree and rebuild pipeline.
+
+<span class="kw">Files:</span> <span class="kw2">src/model/FeatureTree.hpp/.cpp</span>, <span class="kw2">FeatureNode.hpp</span>
+
+<span class="kw2">Feature types (Phase 2 scope):</span>
+  SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature,
+  ChamferFeature, ShellFeature, HoleFeature, MirrorFeature
+
+<span class="kw2">FeatureNode base:</span>
+  - id: uint32_t (auto-incremented)
+  - name: std::string (user-editable)
+  - state: enum { Valid, Warning, Error, Suppressed }
+  - children: std::vector&lt;FeatureNode*&gt;
+
+<span class="kw2">Rebuild pipeline:</span>
+  Rebuild delegation is intent-driven (user action or explicit orchestrator command).
+  Support full rebuild and partial rebuild from any selected feature/node downward.
+  Rebuild executes top-down in topological order on a thread pool.
+  On completion: tessellate() → upload new mesh to GPU → repaint.
+
+<span class="kw2">Fault isolation:</span>
+  All solve/build steps execute in GeometryWorker (module 2) via IPC.
+  If worker dies, MainOrchestrator (module 1) relaunches worker and retries once with same parameters.
+  If retry fails, feature state = Error and UI remains responsive.
+
+<span class="kw2">FeatureTree Panel (ImGui):</span>
+  Tree view with icons per feature type. Right-click context menu:
+  Edit, Rename, Suppress/Unsuppress, Delete, Reorder (drag).
+  Double-click Sketch → enter sketch mode.
+
+<span class="comment">// Undo/redo: command pattern, store JSON snapshot per step (max 50 steps)</span></div>
+
+    <h2 class="sub" id="p2-json-io">2.4 — JSON I/O System</h2>
+
+    <div class="prompt-block p2-block" data-label="PHASE 2 · TASK 4 — JSON SERIALIZER">Implement the model JSON serializer and deserializer.
+
+<span class="kw">Files:</span> <span class="kw2">src/io/ModelSerializer.hpp/.cpp</span>, <span class="kw2">src/io/ModelDeserializer.hpp/.cpp</span>
+
+<span class="kw2">Serializer requirements:</span>
+  - Full model → JSON: features[], parameters{}, metadata{}
+  - Parameters use <span class="kw3">#name</span> prefix for references (e.g., <span class="kw3">"depth": "#height"</span>)
+  - Non-flat hierarchy: features reference dependencies by ID (e.g., Extrude <span class="kw3">"profile_id"</span> → Sketch/Profile feature)
+  - Compact or pretty-print mode (pretty for human-editable files)
+  - File watcher: poll file on disk every 500ms; if hash changed, queue suggestion only (no auto rebuild)
+
+<span class="kw2">Deserializer requirements:</span>
+  - Validate schema_version field; reject unknown versions with error
+  - Resolve parameter references before constructing features
+  - Resolve feature-ID dependencies and reject broken dependency graphs
+  - Report errors per-feature (unknown type, missing field, invalid ref) without crashing — mark feature Error state
+  - Return std::expected&lt;FeatureTree, ModelError&gt;
+
+<span class="kw2">Testing:</span>
+  Catch2 tests for roundtrip: build model in code → serialize → deserialize → compare geometry hashes.
+  Test: missing required field, circular parameter reference, unknown feature type.
+
+<span class="comment">// Use nlohmann::json. Schema documented in docs/model_schema.md (generate this file too)</span></div>
+
+    <h2 class="sub" id="p2-prompt">2.5 — Phase 2 LLM Prompt Templates</h2>
+
+    <div class="prompt-block p2-block" data-label="PHASE 2 · SYSTEM PROMPT DELTA">Extend the Phase 1 system prompt with:
+
+We are now in Phase 2. The window, renderer, and ImGui layout from Phase 1 are complete.
+Do not regenerate Phase 1 code unless explicitly asked to fix something.
+
+<span class="kw">New context:</span>
+- Geometry kernel: Open CASCADE 7.7 (OCCT) behind IGeometryKernel interface
+- Sketch subsystem: <span class="kw2">src/sketch/</span> (already scaffolded per Phase 2 Task 2)
+- Feature tree: <span class="kw2">src/model/FeatureTree.hpp</span> exists with base types
+- JSON I/O: <span class="kw2">src/io/ModelSerializer.hpp</span> and ModelDeserializer.hpp
+
+<span class="kw2">When I say "rebuild"</span> I mean: resolve parameter refs and feature-ID dependencies → rebuild selected branch (or full model if requested) top-down → tessellate → GPU upload.
+
+<span class="comment">// Always output diff-style changes: "In file X, replace function Y with:"</span>
+<span class="comment">// Do not repeat entire files unless the change affects >50% of lines</span></div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- =================== PHASE 3 =================== -->
+  <section class="section" id="phase3-overview">
+    <div class="section-header">
+      <span class="section-num">P3</span>
+      <h2 class="section-title">Phase 3 — AI/LLM Integration & Polish</h2>
+      <span class="section-tag tag-p3">WEEKS 13–20</span>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill pf3"></div></div>
+
+    <div class="phase-banner p3">
+      <div class="phase-icon">P3</div>
+      <div>
+        <h3>Goal: LLM can read, describe, and propose model changes via Git workflow</h3>
+        <p>Phase 3 wires the LLM server to the model JSON, adds the AI chat panel, implements a PR-style review gate for AI changes, and polishes CATIA-style UX for MVP (without SpaceMouse integration).</p>
+      </div>
+      <div class="phase-duration">8 WEEKS</div>
+    </div>
+
+    <h2 class="sub" id="p3-llm-bridge">3.1 — LLM Bridge Module</h2>
+
+    <p>The LLM bridge is an async HTTP client that talks to any OpenAI-compatible endpoint. It serializes model context, sends the user request, and converts the AI response into a Git change proposal that must pass checker validation and explicit user approval.</p>
+
+    <div class="prompt-block p3-block" data-label="PHASE 3 · TASK 1 — LLM BRIDGE">Implement the LLM bridge module.
+
+  <span class="kw">Files:</span> <span class="kw2">src/ai/LlmBridge.hpp/.cpp</span>, <span class="kw2">src/ai/LlmConfig.hpp</span>, <span class="kw2">src/git/LocalRepoManager.hpp/.cpp</span>, <span class="kw2">src/ai/ChangeProposal.hpp</span>
+
+<span class="kw2">LlmConfig:</span>
+  base_url: std::string   (e.g., "http://192.168.1.10:11434")  ← user-set in Settings
+  api_key:  std::string   (empty = no auth, for local servers)
+  model:    std::string   (e.g., "gpt-4o" or "llama3.3")
+  max_tokens: int         (default 4096)
+  temperature: float      (default 0.2 for deterministic CAD edits)
+
+<span class="kw2">LlmBridge::sendMessage(user_text, model_json_snapshot) → std::future&lt;LlmResponse&gt;</span>
+  System prompt injected automatically:
+  <span class="kw3">"You are a CAD assistant. The current model is provided as JSON below.
+  To modify the model, output a unified diff and commit message proposal.
+  Do not assume direct write access to production model files.
+  Include title, rationale, risk notes, and test checklist in PR-style format.
+  For questions about the model, answer in plain text."</span>
+
+<span class="kw2">Response parsing:</span>
+  Parse proposed diff + commit metadata from assistant reply.
+  Create local feature branch (e.g., ai/proposal-YYYYMMDD-HHMM).
+  Commit AI proposal in local repo.
+  Run checker pipeline (schema validator + dependency validator + optional build/tests).
+  Open PR-style preview panel with changed files, checks, and risk summary.
+  Only on user Accept/Merge: fast-forward or squash-merge into active branch, then trigger reload/rebuild.
+  On Reject: keep branch for audit or delete branch per user choice.
+
+<span class="comment">// HTTP: use cpp-httplib (header-only). Streaming responses: update chat panel per chunk.</span>
+<span class="comment">// Thread safety: model JSON snapshot taken under read-lock before sending</span></div>
+
+    <div class="callout tip">
+      <span class="callout-icon">TIP</span>
+      <div>When prompting the LLM to build this module, emphasize the streaming response requirement. The user should see the AI reply character-by-character like a normal chat — not wait for the full response before it appears. Use the <code>stream: true</code> SSE endpoint.</div>
+    </div>
+
+    <h2 class="sub" id="p3-ui-panel">3.2 — AI Panel UI</h2>
+
+    <div class="prompt-block p3-block" data-label="PHASE 3 · TASK 2 — AI PANEL">Implement the AI chat panel (ImGui, docked on the right or as a floating window).
+
+<span class="kw">File:</span> <span class="kw2">src/ui/AiPanel.hpp/.cpp</span>
+
+<span class="kw2">Layout:</span>
+  - Chat history: scrollable, user messages right-aligned (blue), assistant left-aligned (gray)
+  - Thinking indicator: animated dots when awaiting response
+  - Input field (multiline, Ctrl+Enter to send)
+  - Status bar: model name, connection status (green/red dot), token count estimate
+  - Settings icon → opens LlmConfig editor popup (URL, API key, model name, temperature)
+  - "Create proposal" button on assistant messages that contain changes
+  - PR preview drawer: files changed, checker status, commit title, merge controls
+
+<span class="kw2">Context button:</span>
+  "Send model context" toggle. When ON, the full model JSON is prepended to every message.
+  When OFF, only conversation history is sent (cheaper for questions not needing geometry).
+
+<span class="kw2">Keyboard shortcuts:</span>
+  Ctrl+L → focus AI panel input
+  Ctrl+Shift+L → toggle AI panel visibility
+  Ctrl+Shift+P → open latest AI proposal preview
+  Ctrl+Shift+M → merge selected approved proposal
+
+<span class="comment">// Parse markdown in assistant replies: bold, inline code, code blocks (use imgui_markdown or custom)</span></div>
+
+    <h2 class="sub" id="p3-json-edit">3.3 — JSON Edit → Live Regen</h2>
+
+    <p>The third interaction mode: the user edits the <code>.cadmodel.json</code> file directly in any text editor. AI edits still flow through the local Git proposal pipeline. The file watcher detects external changes and queues intent-driven rebuild suggestions. Bad JSON must never crash the app.</p>
+
+    <div class="prompt-block p3-block" data-label="PHASE 3 · TASK 3 — FILE WATCHER">Implement the JSON file watcher and hot-reload pipeline.
+
+<span class="kw">File:</span> <span class="kw2">src/io/FileWatcher.hpp/.cpp</span>
+
+<span class="kw2">Mechanism:</span>
+  Poll file mtime + size every 500ms on background thread.
+  Debounce: wait 200ms after last change before triggering reload (handles editors that write in two steps).
+  On change: read file → parse JSON → validate schema → if valid, post ReloadModelEvent to main thread queue.
+
+<span class="kw2">Main thread on ReloadModelEvent:</span>
+  1. Store current undo snapshot
+  2. Run deserializer (returns std::expected)
+  3. If error: show notification toast (red, 5s), keep current model
+  4. If success: diff old vs new feature list, prepare rebuild suggestion (full or branch)
+  5. Execute rebuild only after explicit user/orchestrator intent confirmation
+
+<span class="kw2">AI-originated changes:</span>
+  Always come from merged local proposal branch.
+  File watcher should tag such changes with commit hash and proposal ID for audit trail.
+
+<span class="kw2">JSON editor panel (optional, in-app):</span>
+  Embedded text editor (ImGui + basic syntax highlight or use ImGuiColorTextEdit library).
+  Built-in schema validator + dependency validator (feature IDs, reference integrity).
+  Cursor-aware proposal toolbox suggests legal fragments for current JSON path.
+  Example: inside Extrude node, proposals include profile_id, direction, draft, operation mode.
+  Example: inside profile/entity lists, proposals include line, sketch, extract snippets.
+  "Apply" button validates first, then requests intent-driven reload/rebuild.
+  Error annotations: red underline on lines that fail schema validation, tooltip shows error.
+
+<span class="comment">// The file watcher must survive the model file being deleted and recreated (some editors do this)</span>
+<span class="comment">// Use inotify on Linux, ReadDirectoryChangesW on Windows for OS-native events as enhancement</span></div>
+
+    <h2 class="sub" id="p3-catia-ux">3.4 — CATIA V5 UX Polish (MVP)</h2>
+
+    <div class="prompt-block p3-block" data-label="PHASE 3 · TASK 4 — UX POLISH">Polish the UI to match CATIA V5 / 3DEXPERIENCE UX standards.
+
+<span class="kw">Toolbar system:</span>
+  Top: Standard (New, Open, Save, Undo, Redo), View (shading modes), Measure
+  Left vertical (like CATIA): Sketch tools (when sketch active), Feature tools (when 3D active)
+  Tool icons: 24x24 PNG sprites loaded from <span class="kw3">assets/icons/</span>
+  Hover tooltip with tool name + keyboard shortcut
+
+<span class="kw">Shading modes (V key or dropdown):</span>
+  Shaded, Shaded with Edges, Wireframe, HLR (Hidden Line Removal, grayscale pass), Transparent
+
+<span class="kw">Selection system:</span>
+  Click: select face/edge/vertex (highlights orange, snaps to entity type filter in Properties panel)
+  Box select: left-drag selects multiple
+  Ctrl+click: add to selection, Shift+click: range
+  Selection filter toolbar: Solid / Face / Edge / Vertex / Sketch Entity
+
+<span class="kw">Measurement tool (CATIA Measure Between):</span>
+  Activate: Alt+M. Click two entities → show distance/angle in viewport annotation + Properties panel.
+
+<span class="kw">MVP scope note:</span>
+  SpaceMouse / 3Dx profile is excluded from MVP and moved to post-MVP backlog.
+
+<span class="comment">// Material system: 5 preset materials (Steel, Aluminum, Plastic, Glass, Custom) with PBR params</span>
+<span class="comment">// Environment map: IBL lighting, load .hdr from assets/env/</span></div>
+
+    <h2 class="sub" id="p3-prompt">3.5 — Phase 3 System Prompt Delta</h2>
+
+    <div class="prompt-block p3-block" data-label="PHASE 3 · SYSTEM PROMPT DELTA">We are now in Phase 3. Phases 1 and 2 are complete and stable. Do not change existing interfaces unless a breaking change is explicitly required.
+
+<span class="kw">New Phase 3 additions:</span>
+- <span class="kw2">LlmBridge</span> (src/ai/): HTTP client to OpenAI-compatible server, proposal generator
+- <span class="kw2">AiPanel</span> (src/ui/): streaming chat UI with PR-style proposal preview
+- <span class="kw2">FileWatcher</span> (src/io/): debounced hot-reload suggestion pipeline
+- <span class="kw2">LocalRepoManager</span> (src/git/): branch, commit, diff, merge orchestration
+- UX polish: selection system, measurement tool, shading modes (SpaceMouse deferred)
+- Orchestrator policy: rebuild is intent-driven and can target branch-from-node rebuild
+- Fault policy: worker module crash is isolated; orchestrator restarts worker and retries safely
+
+<span class="kw2">When modifying model via LLM:</span>
+The bridge injects this system prompt automatically — do NOT duplicate it in your user prompts:
+<span class="kw3">"You are a CAD assistant. Output PR-style proposal content: unified diff, commit message, and checker checklist. Never assume direct write to active CAD files."</span>
+
+<span class="kw2">Phase 3 output format:</span>
+For large changes: provide a numbered file list and ask me which to generate first.
+For small changes: diff-style only (no full file reprints).
+
+<span class="comment">// At this point the project is ~15k lines of C++. Always ask for file context before editing.</span></div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- =================== FILE STRUCTURE =================== -->
+  <section class="section" id="file-structure">
+    <div class="section-header">
+      <span class="section-num">A1</span>
+      <h2 class="section-title">Repo File Structure</h2>
+      <span class="section-tag tag-sys">REF</span>
+    </div>
+
+    <div class="file-tree"><span class="ft-root">VulcanCAD/</span>
+├── <span class="ft-dir">CMakeLists.txt</span>            <span class="ft-comment"># root build, presets: debug/release/asan</span>
+├── <span class="ft-dir">cmake/</span>
+│   ├── <span class="ft-file">FindOCCT.cmake</span>
+│   └── <span class="ft-file">CompilerFlags.cmake</span>
+├── <span class="ft-dir">src/</span>
+│   ├── <span class="ft-dir">app/</span>
+│   │   ├── <span class="ft-file">Application<span class="ft-ext">.hpp/.cpp</span></span>   <span class="ft-comment"># main loop, event dispatch</span>
+│   │   └── <span class="ft-file">Window<span class="ft-ext">.hpp/.cpp</span></span>        <span class="ft-comment"># SDL3 wrapper</span>
+│   ├── <span class="ft-dir">renderer/</span>
+│   │   ├── <span class="ft-file">IRHI<span class="ft-ext">.hpp</span></span>              <span class="ft-comment"># Render Hardware Interface</span>
+│   │   ├── <span class="ft-file">VulkanContext<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">VulkanPipeline<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">DX12Context<span class="ft-ext">.hpp/.cpp</span></span>    <span class="ft-comment"># ifdef USE_DX12</span>
+│   │   ├── <span class="ft-file">MeshBuffer<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   └── <span class="ft-file">SceneGraph<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">scene/</span>
+│   │   ├── <span class="ft-file">Camera<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">SelectionManager<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   └── <span class="ft-file">MeasureTool<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">geometry/</span>
+│   │   ├── <span class="ft-file">IGeometryKernel<span class="ft-ext">.hpp</span></span>
+│   │   ├── <span class="ft-file">OcctKernel<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   └── <span class="ft-file">FallbackKernel<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">sketch/</span>
+│   │   ├── <span class="ft-file">SketchEntity<span class="ft-ext">.hpp</span></span>
+│   │   ├── <span class="ft-file">SketchConstraint<span class="ft-ext">.hpp</span></span>
+│   │   ├── <span class="ft-file">SketchSolver<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">SketchDocument<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   └── <span class="ft-file">SketchView<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">model/</span>
+│   │   ├── <span class="ft-file">FeatureTree<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">FeatureNode<span class="ft-ext">.hpp</span></span>
+│   │   └── <span class="ft-file">ParameterStore<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">io/</span>
+│   │   ├── <span class="ft-file">ModelSerializer<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">ModelDeserializer<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   └── <span class="ft-file">FileWatcher<span class="ft-ext">.hpp/.cpp</span></span>
+│   ├── <span class="ft-dir">ai/</span>
+│   │   ├── <span class="ft-file">LlmBridge<span class="ft-ext">.hpp/.cpp</span></span>
+│   │   ├── <span class="ft-file">LlmConfig<span class="ft-ext">.hpp</span></span>
+│   │   └── <span class="ft-file">ChangeProposal<span class="ft-ext">.hpp</span></span>
+│   ├── <span class="ft-dir">git/</span>
+│   │   └── <span class="ft-file">LocalRepoManager<span class="ft-ext">.hpp/.cpp</span></span>
+│   └── <span class="ft-dir">ui/</span>
+│       ├── <span class="ft-file">Panel<span class="ft-ext">.hpp</span></span>               <span class="ft-comment"># base class</span>
+│       ├── <span class="ft-file">FeatureTreePanel<span class="ft-ext">.hpp/.cpp</span></span>
+│       ├── <span class="ft-file">PropertiesPanel<span class="ft-ext">.hpp/.cpp</span></span>
+│       ├── <span class="ft-file">AiPanel<span class="ft-ext">.hpp/.cpp</span></span>
+│       ├── <span class="ft-file">MenuBar<span class="ft-ext">.hpp/.cpp</span></span>
+│       └── <span class="ft-file">Toolbar<span class="ft-ext">.hpp/.cpp</span></span>
+├── <span class="ft-dir">shaders/</span>
+│   ├── <span class="ft-file">mesh.vert.glsl / mesh.frag.glsl</span>
+│   ├── <span class="ft-file">wireframe.vert.glsl</span>
+│   └── <span class="ft-file">mesh.vert.hlsl / mesh.frag.hlsl</span> <span class="ft-comment"># DX12</span>
+├── <span class="ft-dir">assets/</span>
+│   ├── <span class="ft-dir">icons/</span>          <span class="ft-comment"># 24x24 PNG toolbar icons</span>
+│   └── <span class="ft-dir">env/</span>            <span class="ft-comment"># .hdr IBL environment maps</span>
+├── <span class="ft-dir">tests/</span>
+│   ├── <span class="ft-file">test_geometry.cpp</span>
+│   ├── <span class="ft-file">test_json_roundtrip.cpp</span>
+│   └── <span class="ft-file">test_sketch_solver.cpp</span>
+└── <span class="ft-dir">docs/</span>
+    ├── <span class="ft-file">model_schema.md</span>
+  ├── <span class="ft-file">llm_api_guide.md</span>
+  └── <span class="ft-file">ai_change_governance.md</span></div>
+  </section>
+
+  <!-- =================== MILESTONES =================== -->
+  <section class="section" id="milestones">
+    <div class="section-header">
+      <span class="section-num">A2</span>
+      <h2 class="section-title">Milestone Checklist</h2>
+      <span class="section-tag tag-sys">TRACKER</span>
+    </div>
+
+    <div class="milestone-row" style="font-family: var(--mono); font-size: 10px; color: var(--text3); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; grid-template-columns: 120px 1fr auto;">
+      <div>PHASE</div><div>MILESTONE</div><div>VERIFY</div>
+    </div>
+    <div class="milestone-row"><span class="milestone-phase mp1">PHASE 1</span><span class="milestone-name">SDL3 window opens, Vulkan device selected, no validation errors</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp1">PHASE 1</span><span class="milestone-name">ImGui renders with FeatureTree / Viewport / Properties layout</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp1">PHASE 1</span><span class="milestone-name">Camera orbit/pan/zoom working; F key fits scene</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp1">PHASE 1</span><span class="milestone-name">Settings.json loads correctly; DX12 path compiles (USE_DX12=ON)</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">IGeometryKernel + OcctKernel creates an extruded box, displays in viewport</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Sketch mode opens, line/arc drawn, constraint turns it green</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Sketch → Extrude creates solid; feature appears in FeatureTree</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Save to JSON; delete model; reload from JSON; geometry matches</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Change parameter in JSON; orchestrator proposes rebuild; user confirms intent</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Partial rebuild from selected feature node updates only downstream branch</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Undo/redo 10 steps; model is correct at each step</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp2">PHASE 2</span><span class="milestone-name">Worker crash during solve does not kill UI; worker restarts and retries request</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">LLM server connects; "describe this model" returns correct text</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">LLM creates local PR-style proposal; checker validates; user merges to apply model change</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">Rejected AI proposal never mutates active model branch</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">Shading modes: all 5 modes render correctly</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">Measurement tool: click two faces, distance shown correctly</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">JSON editor validator + cursor-aware toolbox proposes legal snippets by context</span><span class="milestone-check">[ ]</span></div>
+    <div class="milestone-row"><span class="milestone-phase mp3">PHASE 3</span><span class="milestone-name">1M triangle model renders at &gt;60 FPS (Release build)</span><span class="milestone-check">[ ]</span></div>
+  </section>
+
+  <!-- =================== PROMPTING TIPS =================== -->
+  <section class="section" id="prompting-tips">
+    <div class="section-header">
+      <span class="section-num">A3</span>
+      <h2 class="section-title">Prompting Best Practices</h2>
+      <span class="section-tag tag-sys">META</span>
+    </div>
+
+    <h2 class="sub">Context Management</h2>
+    <p>LLM context windows are finite. At ~15k lines of C++, the full codebase won't fit. Use these strategies:</p>
+
+    <ul class="styled">
+      <li>Always start a new session with the System Prompt for that phase. It re-establishes assumptions without needing to paste code.</li>
+      <li>Paste only the relevant file header (<code>.hpp</code>) when asking to implement a <code>.cpp</code> — the interface is the contract.</li>
+      <li>After a major milestone, ask the LLM to write a 1-paragraph "session summary" you can paste into the next session as a status update.</li>
+      <li>Use the phrase <strong>"diff-style only"</strong> to prevent the LLM from reprinting entire files when making small changes.</li>
+    </ul>
+
+    <h2 class="sub">Avoiding Hallucinations</h2>
+
+    <ul class="styled">
+      <li>Specify exact library versions (e.g., "Open CASCADE 7.7", "ImGui 1.91") — vague version specs lead to hallucinated API names.</li>
+      <li>For Vulkan: paste the exact extension list you want enabled. Never ask "use the best extensions" — the model will invent some.</li>
+      <li>After each code generation, ask: "List every third-party function you called that you aren't 100% sure exists." Then verify those.</li>
+      <li>Run the code before the next session. Paste compile errors back as-is — the LLM fixes them faster with exact error text.</li>
+    </ul>
+
+    <h2 class="sub">Effective Decomposition</h2>
+
+    <div class="step-flow">
+      <div class="step-item">
+        <div class="step-num green">1</div>
+        <div class="step-content">
+          <h4>Interface First</h4>
+          <p>Always ask for the <code>.hpp</code> (interface) before the <code>.cpp</code> (implementation). Review and correct the interface before writing a line of implementation code.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num green">2</div>
+        <div class="step-content">
+          <h4>One Subsystem Per Session</h4>
+          <p>Don't ask for "the entire sketch system." Ask for "SketchEntity types and SketchDocument," then a new session for "SketchSolver," then one for "SketchView."</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num green">3</div>
+        <div class="step-content">
+          <h4>Test Before Extending</h4>
+          <p>Write and run the Catch2 tests after each subsystem. Prompt: "Write Catch2 tests for ModelSerializer roundtrip" before moving to the next task.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num green">4</div>
+        <div class="step-content">
+          <h4>Error-First Thinking</h4>
+          <p>Append "Also describe how this component handles every possible failure mode" to any implementation request. Forces the model to think about error paths it would otherwise skip.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <span class="callout-icon">WARN</span>
+      <div>Large Vulkan init blocks (1000+ lines) should be split into at least 3 prompts: (1) instance + surface + device, (2) swapchain + dynamic rendering setup, (3) pipeline + mesh rendering. Doing it in one prompt reliably produces subtle initialization-order bugs.</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <div class="doc-footer">
+    <span>VulcanCAD · LLM Dev Guide · rev 2025-04</span>
+    <span>C++20 · Vulkan 1.3 · CATIA V5 ref</span>
+  </div>
+
+</main>
+</div>
+</body>
+</html>
+
+
+
+Natural next steps:
+
+Wire real dependency discovery in CMake (SDL3, Vulkan, ImGui, OCCT).
+Implement module 1 orchestrator loop with worker heartbeat/restart supervision.
+Add local proposal branch flow in LocalRepoManager with checker and merge gate.

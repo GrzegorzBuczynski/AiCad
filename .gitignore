@@ -1,0 +1,54 @@
+# Build output
+build/
+build-*/
+out/
+bin/
+lib/
+
+# CMake artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+Makefile
+install_manifest.txt
+compile_commands.json
+
+# Ninja / Make
+.ninja_deps
+.ninja_log
+
+# IDE / editors
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs and traces
+*.log
+*.trace
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Python and tooling cache
+__pycache__/
+*.pyc
+
+# Shader outputs
+*.spv
+
+# Vulkan and GPU debugging artifacts
+vk_layer_settings.txt
+*.rdc
+
+# Local env files
+.env
+.env.*

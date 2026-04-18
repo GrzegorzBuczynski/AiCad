@@ -1,0 +1,24 @@
+{
+  "width": 1600,
+  "height": 900,
+  "renderer": "vulkan",
+  "vsync": true,
+  "window": {
+    "width": 1600,
+    "height": 900,
+    "fullscreen": false,
+    "vsync": true
+  },
+  "llm": {
+    "base_url": "http://127.0.0.1:11434",
+    "api_key": "",
+    "model": "gpt-4o",
+    "temperature": 0.2,
+    "max_tokens": 4096
+  },
+  "ai_workflow": {
+    "mode": "local_pr",
+    "require_checker": true,
+    "require_user_merge": true
+  }
+}
