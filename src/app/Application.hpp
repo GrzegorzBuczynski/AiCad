@@ -125,6 +125,7 @@ private:
     std::optional<WorkerRetryContext> worker_retry_context_{};
     std::array<char, 512> save_model_path_buffer_{};
     std::array<char, 512> open_model_path_buffer_{};
+    std::string current_model_path_{};
     std::string settings_path_{};
 
     std::string last_error_{};

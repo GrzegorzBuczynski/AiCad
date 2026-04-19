@@ -288,6 +288,7 @@ bool Application::init() {
     const std::filesystem::path initial_model_path = std::filesystem::path(settings_.last_model_dir) / "model.json";
     std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
     std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
+    current_model_path_.clear();
 
     sketch_document_.solve();
 
@@ -963,7 +964,12 @@ void Application::draw_menu_bar() {
         return;
     }
 
-    const auto execute_model_save = [&](const std::string& save_path) {
+    const auto execute_model_save = [&](const std::string& save_path) -> bool {
+        if (save_path.empty()) {
+            last_error_ = "Model save path is empty";
+            return false;
+        }
+
         io::ModelSerializerOptions options{};
         options.pretty_print = save_model_pretty_print_;
         options.model_name = "VulcanCAD Model";
@@ -1004,12 +1010,53 @@ void Application::draw_menu_bar() {
 
         if (!io::ModelSerializer::save_to_file(save_path, feature_tree_, options)) {
             last_error_ = "Failed to save model JSON file";
-            return;
+            return false;
         }
 
         update_last_model_dir(settings_.last_model_dir, save_path);
         persist_settings();
+        current_model_path_ = save_path;
         std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", save_path.c_str());
+        std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", save_path.c_str());
+        return true;
+    };
+
+    const auto execute_new_model = [&]() {
+        feature_tree_ = model::FeatureTree{};
+        feature_tree_panel_.set_feature_tree(&feature_tree_);
+
+        sketch_document_ = sketch::SketchDocument(glm::vec3{0.0f, 0.0f, 0.0f});
+        feature_tree_panel_.set_sketch_document(&sketch_document_);
+
+        if (const model::FeatureNode* root = feature_tree_.root()) {
+            model::FeatureTreeError tree_error = model::FeatureTreeError::Ok;
+            const uint32_t sketch_id = feature_tree_.create_feature(model::FeatureType::SketchFeature, "Sketch.001", root->id, &tree_error);
+            if (sketch_id != 0U && tree_error == model::FeatureTreeError::Ok) {
+                (void)feature_tree_.create_feature(model::FeatureType::ExtrudeFeature, "Pad.001", root->id, nullptr);
+                (void)feature_tree_.create_feature(model::FeatureType::FilletFeature, "Fillet.001", root->id, nullptr);
+                (void)feature_tree_.create_feature(model::FeatureType::ShellFeature, "Shell.001", root->id, nullptr);
+            }
+        }
+
+        current_model_path_.clear();
+        const std::filesystem::path initial_model_path = std::filesystem::path(settings_.last_model_dir) / "model.json";
+        std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
+        std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
+        last_error_.clear();
+    };
+
+    const auto invoke_save_as = [&]() {
+#if defined(_WIN32)
+        const std::optional<std::string> picked = save_file_picker("Save model JSON", settings_.last_model_dir);
+        if (picked.has_value()) {
+            (void)execute_model_save(*picked);
+        }
+#endif
+#if !defined(_WIN32)
+        {
+            show_save_as_popup_ = true;
+        }
+#endif
     };
 
     const auto execute_model_open = [&](const std::string& open_path) {
@@ -1148,7 +1195,9 @@ void Application::draw_menu_bar() {
 
             update_last_model_dir(settings_.last_model_dir, open_path);
             persist_settings();
+            current_model_path_ = open_path;
             std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", open_path.c_str());
+            std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", open_path.c_str());
             return;
         }
 
@@ -1158,7 +1207,9 @@ void Application::draw_menu_bar() {
             feature_tree_panel_.set_feature_tree(&feature_tree_);
             update_last_model_dir(settings_.last_model_dir, open_path);
             persist_settings();
+            current_model_path_ = open_path;
             std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", open_path.c_str());
+            std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", open_path.c_str());
             return;
         }
 
@@ -1166,8 +1217,39 @@ void Application::draw_menu_bar() {
         last_error_ = error.message;
     };
 
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool allow_shortcuts = !io.WantTextInput && !ImGui::IsAnyItemActive();
+    if (allow_shortcuts && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+        execute_new_model();
+    }
+    if (allow_shortcuts && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+#if defined(_WIN32)
+        const std::optional<std::string> picked = open_file_picker("Open model JSON", settings_.last_model_dir);
+        if (picked.has_value()) {
+            execute_model_open(*picked);
+        }
+#endif
+#if !defined(_WIN32)
+        {
+            show_open_model_popup_ = true;
+        }
+#endif
+    }
+    if (allow_shortcuts && io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+        invoke_save_as();
+    } else if (allow_shortcuts && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+        const bool has_existing_path = !current_model_path_.empty() && std::filesystem::exists(current_model_path_);
+        if (has_existing_path) {
+            (void)execute_model_save(current_model_path_);
+        } else {
+            invoke_save_as();
+        }
+    }
+
     if (ImGui::BeginMenu("File")) {
-        ImGui::MenuItem("New", "Ctrl+N");
+        if (ImGui::MenuItem("New", "Ctrl+N")) {
+            execute_new_model();
+        }
         if (ImGui::MenuItem("Open Model...", "Ctrl+O")) {
 #if defined(_WIN32)
             const std::optional<std::string> picked = open_file_picker("Open model JSON", settings_.last_model_dir);
@@ -1181,19 +1263,16 @@ void Application::draw_menu_bar() {
             }
 #endif
         }
-        ImGui::MenuItem("Save", "Ctrl+S");
+        if (ImGui::MenuItem("Save", "Ctrl+S")) {
+            const bool has_existing_path = !current_model_path_.empty() && std::filesystem::exists(current_model_path_);
+            if (has_existing_path) {
+                (void)execute_model_save(current_model_path_);
+            } else {
+                invoke_save_as();
+            }
+        }
         if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S")) {
-#if defined(_WIN32)
-            const std::optional<std::string> picked = save_file_picker("Save model JSON", settings_.last_model_dir);
-            if (picked.has_value()) {
-                execute_model_save(*picked);
-            }
-#endif
-#if !defined(_WIN32)
-            {
-                show_save_as_popup_ = true;
-            }
-#endif
+            invoke_save_as();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Exit")) {
@@ -1265,8 +1344,9 @@ void Application::draw_menu_bar() {
         ImGui::Checkbox("Pretty print JSON", &save_model_pretty_print_);
         if (ImGui::Button("Save")) {
             const std::string save_path = std::string(save_model_path_buffer_.data());
-            execute_model_save(save_path);
-            ImGui::CloseCurrentPopup();
+            if (execute_model_save(save_path)) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) {
