@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "name": "VulcanCAD Model",
+  "units": "mm",
+  "parameters": {},
+  "features": [
+    {
+      "id": 1,
+      "expanded": true,
+      "root": true,
+      "type": "PartContainer",
+      "name": "Part.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {"id": 2}
+    },
+    {
+      "id": 2,
+      "expanded": true,
+      "root": false,
+      "type": "SketchFeature",
+      "name": "Sketch.001",
+      "state": "Valid",
+      "suppressed": false,
+      "plane": 6,
+      "payload": 
+      {
+        "id": 3         
+      }
+    },
+        {
+      "id": 3,
+      "expanded": true,
+      "root": false,
+      "type": "Line",
+      "name": "Line.001",
+      "state": "Valid",
+      "suppressed": false,
+      "point_a": 4,
+      "point_b": 5
+    },
+    {
+      "id": 4,
+      "construction": false,
+      "root": false,
+      "type": "Point",
+      "name": "Point.001",
+      "pos": [
+        -73.0,
+        433.0
+      ]
+    },
+    {
+      "id": 5,
+      "construction": false,
+      "root": false,
+      "type": "Point",
+      "name": "Point.002",
+      "pos": [
+        -100.0,
+        433.0
+      ]
+    },
+    {
+      "id": 6,
+      "construction": false,
+      "root": false,
+      "type": "Plane",
+      "name": "Plane.001",
+      "orginPoint": 4,
+      "vector": 5
+    }
+  ],
+  "metadata": {
+    "source": "File->Save As",
+    "generator": "VulcanCAD"
+  },
+  "session": {
+    "camera": {
+      "far_plane": 1000.0,
+      "fov": 60.0,
+      "near_plane": 0.10000000149011612,
+      "ortho_scale": 1.0,
+      "position": [
+        -1.053143858909607,
+        11.806071281433105,
+        -0.2055835723876953
+      ],
+      "projection_mode": "perspective",
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  }
+}
