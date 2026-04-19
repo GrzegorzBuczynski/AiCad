@@ -70,6 +70,40 @@ void draw_sketch_profiles(
     }
 }
 
+void draw_plane_direction_guides(
+    ImDrawList* draw_list,
+    const glm::mat4& view_projection,
+    const ImVec2& origin,
+    const ImVec2& size,
+    const model::Plane& plane) {
+    const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
+    const glm::vec3 helper = std::abs(normal.z) > 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{0.0f, 0.0f, 1.0f};
+    const glm::vec3 u = glm::normalize(glm::cross(helper, normal));
+    const glm::vec3 v = glm::normalize(glm::cross(normal, u));
+
+    constexpr float k_axis_half_extent_world = 1.2f;  // 60mm in current sketch scale
+    const glm::vec3 u_a = plane.origin - u * k_axis_half_extent_world;
+    const glm::vec3 u_b = plane.origin + u * k_axis_half_extent_world;
+    const glm::vec3 v_a = plane.origin - v * k_axis_half_extent_world;
+    const glm::vec3 v_b = plane.origin + v * k_axis_half_extent_world;
+
+    draw_segment(draw_list, view_projection, origin, size, u_a, u_b, IM_COL32(116, 132, 158, 220), 1.8f);
+    draw_segment(draw_list, view_projection, origin, size, v_a, v_b, IM_COL32(116, 132, 158, 220), 1.8f);
+
+    // Keep plane visualization close to previous look: fixed 60x40mm frame.
+    constexpr float k_rect_half_w_world = 30.0f * 0.02f;
+    constexpr float k_rect_half_h_world = 20.0f * 0.02f;
+    const glm::vec3 p0 = plane.origin + u * (-k_rect_half_w_world) + v * (-k_rect_half_h_world);
+    const glm::vec3 p1 = plane.origin + u * (k_rect_half_w_world) + v * (-k_rect_half_h_world);
+    const glm::vec3 p2 = plane.origin + u * (k_rect_half_w_world) + v * (k_rect_half_h_world);
+    const glm::vec3 p3 = plane.origin + u * (-k_rect_half_w_world) + v * (k_rect_half_h_world);
+
+    draw_segment(draw_list, view_projection, origin, size, p0, p1, IM_COL32(58, 120, 210, 200), 2.0f);
+    draw_segment(draw_list, view_projection, origin, size, p1, p2, IM_COL32(58, 120, 210, 200), 2.0f);
+    draw_segment(draw_list, view_projection, origin, size, p2, p3, IM_COL32(58, 120, 210, 200), 2.0f);
+    draw_segment(draw_list, view_projection, origin, size, p3, p0, IM_COL32(58, 120, 210, 200), 2.0f);
+}
+
 void draw_grid_feature(
     ImDrawList* draw_list,
     const glm::mat4& view_projection,
@@ -132,6 +166,7 @@ void ViewportPanel::draw() {
     if (viewport_texture_ != static_cast<ImTextureID>(0) && avail.x > 1.0f && avail.y > 1.0f) {
         ImGui::Image(viewport_texture_, avail);
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_plane_direction_guides(draw_list, view_projection_, content_origin_, avail, sketch_plane_);
         draw_grid_feature(draw_list, view_projection_, content_origin_, avail, grid_feature_);
         draw_sketch_profiles(draw_list, view_projection_, content_origin_, avail, sketch_profiles_, sketch_plane_);
     } else {
@@ -173,6 +208,7 @@ void ViewportPanel::draw() {
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{2.0f, 0.0f, 0.0f}, IM_COL32(220, 90, 90, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 2.0f, 0.0f}, IM_COL32(80, 170, 110, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, 2.0f}, IM_COL32(58, 120, 210, 255), 2.0f);
+        draw_plane_direction_guides(draw_list, view_projection_, origin, avail, sketch_plane_);
         draw_grid_feature(draw_list, view_projection_, origin, avail, grid_feature_);
         draw_sketch_profiles(draw_list, view_projection_, origin, avail, sketch_profiles_, sketch_plane_);
 

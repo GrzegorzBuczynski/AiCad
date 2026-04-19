@@ -124,7 +124,7 @@ uint32_t FeatureTree::create_feature(FeatureType type, const std::string& name, 
         return 0U;
     }
 
-    FeatureNode* parent = find_node(parent_id);
+    FeatureNode* parent = find_feature(parent_id);
     if (parent == nullptr) {
         if (error != nullptr) {
             *error = FeatureTreeError::InvalidParent;
@@ -151,14 +151,14 @@ uint32_t FeatureTree::create_feature(FeatureType type, const std::string& name, 
     return created->id;
 }
 
-FeatureTreeError FeatureTree::rename_feature(uint32_t node_id, const std::string& name) {
+FeatureTreeError FeatureTree::rename_feature(uint32_t feature_id, const std::string& name) {
     if (name.empty()) {
         return FeatureTreeError::InvalidName;
     }
 
-    FeatureNode* node = find_node(node_id);
+    FeatureNode* node = find_feature(feature_id);
     if (node == nullptr) {
-        return FeatureTreeError::NodeNotFound;
+        return FeatureTreeError::FeatureNotFound;
     }
 
     const std::string before = to_json_snapshot();
@@ -169,10 +169,10 @@ FeatureTreeError FeatureTree::rename_feature(uint32_t node_id, const std::string
     return FeatureTreeError::Ok;
 }
 
-FeatureTreeError FeatureTree::set_suppressed(uint32_t node_id, bool suppressed) {
-    FeatureNode* node = find_node(node_id);
+FeatureTreeError FeatureTree::set_suppressed(uint32_t feature_id, bool suppressed) {
+    FeatureNode* node = find_feature(feature_id);
     if (node == nullptr) {
-        return FeatureTreeError::NodeNotFound;
+        return FeatureTreeError::FeatureNotFound;
     }
 
     const std::string before = to_json_snapshot();
@@ -184,14 +184,14 @@ FeatureTreeError FeatureTree::set_suppressed(uint32_t node_id, bool suppressed) 
     return FeatureTreeError::Ok;
 }
 
-FeatureTreeError FeatureTree::delete_feature(uint32_t node_id) {
-    if (root_ == nullptr || node_id == root_->id) {
+FeatureTreeError FeatureTree::delete_feature(uint32_t feature_id) {
+    if (root_ == nullptr || feature_id == root_->id) {
         return FeatureTreeError::InvalidOperation;
     }
 
-    FeatureNode* node = find_node(node_id);
+    FeatureNode* node = find_feature(feature_id);
     if (node == nullptr) {
-        return FeatureTreeError::NodeNotFound;
+        return FeatureTreeError::FeatureNotFound;
     }
 
     const std::string before = to_json_snapshot();
@@ -214,10 +214,10 @@ FeatureTreeError FeatureTree::reorder_feature(uint32_t dragged_id, uint32_t targ
         return FeatureTreeError::InvalidOperation;
     }
 
-    FeatureNode* dragged = find_node(dragged_id);
-    FeatureNode* target_parent = find_node(target_parent_id);
+    FeatureNode* dragged = find_feature(dragged_id);
+    FeatureNode* target_parent = find_feature(target_parent_id);
     if (dragged == nullptr || target_parent == nullptr) {
-        return FeatureTreeError::NodeNotFound;
+        return FeatureTreeError::FeatureNotFound;
     }
 
     if (dragged == target_parent || is_descendant_of(target_parent, dragged)) {
@@ -242,10 +242,10 @@ FeatureTreeError FeatureTree::reorder_feature(uint32_t dragged_id, uint32_t targ
     return FeatureTreeError::Ok;
 }
 
-FeatureTreeError FeatureTree::set_feature_state(uint32_t node_id, FeatureState state) {
-    FeatureNode* node = find_node(node_id);
+FeatureTreeError FeatureTree::set_feature_state(uint32_t feature_id, FeatureState state) {
+    FeatureNode* node = find_feature(feature_id);
     if (node == nullptr) {
-        return FeatureTreeError::NodeNotFound;
+        return FeatureTreeError::FeatureNotFound;
     }
 
     node->state = state;
@@ -265,12 +265,12 @@ RebuildResult FeatureTree::rebuild(
     if (request.full_rebuild) {
         start = root_;
     } else {
-        start = find_node(request.start_node_id);
+        start = find_feature(request.start_feature_id);
     }
 
     if (start == nullptr) {
         result.success = false;
-        result.error = FeatureTreeError::NodeNotFound;
+        result.error = FeatureTreeError::FeatureNotFound;
         return result;
     }
 
@@ -280,7 +280,7 @@ RebuildResult FeatureTree::rebuild(
     geometry::GeometryThreadPool pool(1U);
 
     for (const uint32_t node_id : order) {
-        FeatureNode* node = find_node(node_id);
+        FeatureNode* node = find_feature(node_id);
         if (node == nullptr) {
             continue;
         }
@@ -302,7 +302,7 @@ RebuildResult FeatureTree::rebuild(
             {"feature_name", node->name},
             {"feature_type", to_string(node->type)},
             {"full_rebuild", request.full_rebuild},
-            {"start_node_id", request.start_node_id},
+            {"start_feature_id", request.start_feature_id},
         };
 
         const bool queued = pool.enqueue([&]() {
@@ -321,7 +321,7 @@ RebuildResult FeatureTree::rebuild(
             result.success = false;
             result.error = FeatureTreeError::QueueFailed;
             node->state = FeatureState::Error;
-            result.failed_node_id = node->id;
+            result.failed_feature_id = node->id;
             return result;
         }
 
@@ -334,7 +334,7 @@ RebuildResult FeatureTree::rebuild(
             node->state = FeatureState::Warning;
             result.success = false;
             result.worker_crashed = true;
-            result.failed_node_id = node->id;
+            result.failed_feature_id = node->id;
             result.error = FeatureTreeError::WorkerCrashed;
             return result;
         }
@@ -342,7 +342,7 @@ RebuildResult FeatureTree::rebuild(
         if (!delegate_result.success) {
             node->state = FeatureState::Error;
             result.success = false;
-            result.failed_node_id = node->id;
+            result.failed_feature_id = node->id;
             result.error = FeatureTreeError::WorkerFailed;
             return result;
         }
@@ -373,16 +373,16 @@ const FeatureNode* FeatureTree::root() const {
     return root_;
 }
 
-FeatureNode* FeatureTree::find_node(uint32_t node_id) {
-    const auto it = node_index_.find(node_id);
+FeatureNode* FeatureTree::find_feature(uint32_t feature_id) {
+    const auto it = node_index_.find(feature_id);
     if (it == node_index_.end()) {
         return nullptr;
     }
     return it->second;
 }
 
-const FeatureNode* FeatureTree::find_node(uint32_t node_id) const {
-    const auto it = node_index_.find(node_id);
+const FeatureNode* FeatureTree::find_feature(uint32_t feature_id) const {
+    const auto it = node_index_.find(feature_id);
     if (it == node_index_.end()) {
         return nullptr;
     }

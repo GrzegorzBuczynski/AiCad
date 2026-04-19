@@ -1398,15 +1398,16 @@ Optional: DirectX 12 behind <span class="kw3">#ifdef USE_DX12</span>. Compile fl
   - Parameters use <span class="kw3">#name</span> prefix for references (e.g., <span class="kw3">"depth": "#height"</span>)
   - Non-flat hierarchy: features reference dependencies by ID (e.g., Extrude <span class="kw3">"profile_id"</span> → Sketch/Profile feature)
   - Compact or pretty-print mode (pretty for human-editable files)
-  - File watcher: poll file on disk every 500ms; if hash changed, queue suggestion only (no auto rebuild)
-
-<span class="kw2">Deserializer requirements:</span>
+  - Add save optin to ImGui File menu, with "Save As" dialog
+  
+  <span class="kw2">Deserializer requirements:</span>
   - Validate schema_version field; reject unknown versions with error
   - Resolve parameter references before constructing features
   - Resolve feature-ID dependencies and reject broken dependency graphs
   - Report errors per-feature (unknown type, missing field, invalid ref) without crashing — mark feature Error state
   - Return std::expected&lt;FeatureTree, ModelError&gt;
-
+  - Add option to read with pile select ImGui dialog JSON and applay to working feature tree.
+  
 <span class="kw2">Testing:</span>
   Catch2 tests for roundtrip: build model in code → serialize → deserialize → compare geometry hashes.
   Test: missing required field, circular parameter reference, unknown feature type.

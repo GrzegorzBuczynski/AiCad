@@ -38,9 +38,26 @@ entity_id SketchDocument::add_point(const glm::vec2& pos, bool construction) {
 }
 
 entity_id SketchDocument::add_line(const glm::vec2& p1, const glm::vec2& p2, bool construction) {
+    const entity_id point_a_id = add_point(p1, construction);
+    const entity_id point_b_id = add_point(p2, construction);
+
     const entity_id id = next_entity_id_++;
-    entities_.push_back(SketchEntity{id, construction, false, LineEntity{p1, p2}});
+    entities_.push_back(SketchEntity{id, construction, false, LineEntity{point_a_id, point_b_id, p1, p2}});
     return id;
+}
+
+std::optional<std::pair<entity_id, entity_id>> SketchDocument::line_points(entity_id line_id) const {
+    const SketchEntity* entity = find_entity(line_id);
+    if (entity == nullptr) {
+        return std::nullopt;
+    }
+
+    const auto* line = std::get_if<LineEntity>(&entity->data);
+    if (line == nullptr) {
+        return std::nullopt;
+    }
+
+    return std::make_pair(line->point_a, line->point_b);
 }
 
 entity_id SketchDocument::add_circle(const glm::vec2& center, float radius, bool construction) {
@@ -62,7 +79,10 @@ constraint_id SketchDocument::add_constraint(const SketchConstraintData& data) {
 }
 
 SolveResult SketchDocument::solve() {
+    sync_lines_from_points();
     last_result_ = solver_.solve_incremental(entities_, constraints_);
+    sync_points_from_lines();
+    sync_lines_from_points();
     return last_result_;
 }
 
@@ -332,6 +352,54 @@ bool SketchDocument::snap_enabled() const {
 
 void SketchDocument::set_snap_enabled(bool enabled) {
     snap_enabled_ = enabled;
+}
+
+void SketchDocument::sync_lines_from_points() {
+    for (SketchEntity& entity : entities_) {
+        auto* line = std::get_if<LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        const SketchEntity* point_a_entity = find_entity(line->point_a);
+        const SketchEntity* point_b_entity = find_entity(line->point_b);
+        if (point_a_entity == nullptr || point_b_entity == nullptr) {
+            continue;
+        }
+
+        const auto* point_a = std::get_if<PointEntity>(&point_a_entity->data);
+        const auto* point_b = std::get_if<PointEntity>(&point_b_entity->data);
+        if (point_a == nullptr || point_b == nullptr) {
+            continue;
+        }
+
+        line->p1 = point_a->pos;
+        line->p2 = point_b->pos;
+    }
+}
+
+void SketchDocument::sync_points_from_lines() {
+    for (const SketchEntity& entity : entities_) {
+        const auto* line = std::get_if<LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        SketchEntity* point_a_entity = find_entity(line->point_a);
+        SketchEntity* point_b_entity = find_entity(line->point_b);
+        if (point_a_entity == nullptr || point_b_entity == nullptr) {
+            continue;
+        }
+
+        auto* point_a = std::get_if<PointEntity>(&point_a_entity->data);
+        auto* point_b = std::get_if<PointEntity>(&point_b_entity->data);
+        if (point_a == nullptr || point_b == nullptr) {
+            continue;
+        }
+
+        point_a->pos = line->p1;
+        point_b->pos = line->p2;
+    }
 }
 
 }  // namespace sketch

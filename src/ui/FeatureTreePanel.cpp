@@ -6,10 +6,17 @@
 
 #include <imgui.h>
 
+#include "sketch/SketchDocument.hpp"
+#include "sketch/SketchEntity.hpp"
+
 namespace ui {
 
 void FeatureTreePanel::set_feature_tree(model::FeatureTree* tree) {
     tree_ = tree;
+}
+
+void FeatureTreePanel::set_sketch_document(sketch::SketchDocument* document) {
+    sketch_document_ = document;
 }
 
 void FeatureTreePanel::set_font_scale(float scale) {
@@ -74,54 +81,123 @@ uint32_t FeatureTreePanel::color_for_state(model::FeatureState state) {
     return IM_COL32(32, 52, 84, 255);
 }
 
-void FeatureTreePanel::draw_node(model::FeatureNode* node) {
-    if (tree_ == nullptr || node == nullptr) {
+void FeatureTreePanel::draw_sketch_entity_hierarchy() {
+    if (sketch_document_ == nullptr) {
+        ImGui::TextDisabled("No sketch document attached");
+        return;
+    }
+
+    const ImGuiTreeNodeFlags collector_flags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanFullWidth;
+    if (!ImGui::TreeNodeEx("[GEO] Geometry", collector_flags)) {
+        return;
+    }
+
+    const std::vector<sketch::SketchEntity>& entities = sketch_document_->entities();
+    for (const sketch::SketchEntity& entity : entities) {
+        const auto* line = std::get_if<sketch::LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        const std::string line_label = "[LN] Line." + std::to_string(entity.id) + "##sk_line_" + std::to_string(entity.id);
+        const bool line_open = ImGui::TreeNodeEx(line_label.c_str(), ImGuiTreeNodeFlags_SpanFullWidth);
+        if (!line_open) {
+            continue;
+        }
+
+        const auto point_ids = sketch_document_->line_points(entity.id);
+        if (!point_ids.has_value()) {
+            ImGui::TextDisabled("Missing endpoint references");
+            ImGui::TreePop();
+            continue;
+        }
+
+        const sketch::SketchEntity* point_a = sketch_document_->find_entity(point_ids->first);
+        const sketch::SketchEntity* point_b = sketch_document_->find_entity(point_ids->second);
+
+        const auto draw_point = [this](const sketch::SketchEntity* point_entity, const char* slot_label) {
+            if (point_entity == nullptr) {
+                ImGui::BulletText("[PT] %s: missing", slot_label);
+                return;
+            }
+
+            const auto* point = std::get_if<sketch::PointEntity>(&point_entity->data);
+            if (point == nullptr) {
+                ImGui::BulletText("[PT] %s: invalid", slot_label);
+                return;
+            }
+
+            const std::string point_label =
+                std::string("[PT] ") + slot_label +
+                " Point." + std::to_string(point_entity->id) +
+                " (" + std::to_string(point->pos.x) + ", " + std::to_string(point->pos.y) + ")##sk_pt_" +
+                std::to_string(point_entity->id) + "_" + slot_label;
+
+            constexpr ImGuiSelectableFlags point_flags = ImGuiSelectableFlags_AllowDoubleClick;
+            if (ImGui::Selectable(point_label.c_str(), false, point_flags) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                edit_point_id_ = point_entity->id;
+                edit_point_value_ = point->pos;
+                ImGui::OpenPopup("Edit Point Coordinates");
+            }
+        };
+
+        draw_point(point_a, "A");
+        draw_point(point_b, "B");
+
+        ImGui::TreePop();
+    }
+
+    ImGui::TreePop();
+}
+
+void FeatureTreePanel::draw_feature_node(model::FeatureNode* feature) {
+    if (tree_ == nullptr || feature == nullptr) {
         return;
     }
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
-    if (node->children.empty() && node->type != model::FeatureType::SketchFeature) {
+    if (feature->children.empty() && feature->type != model::FeatureType::SketchFeature) {
         flags |= ImGuiTreeNodeFlags_Leaf;
     }
 
-    const std::string label = std::string(icon_for_type(node->type)) + " " + node->name + "##node_" + std::to_string(node->id);
-    ImGui::PushStyleColor(ImGuiCol_Text, color_for_state(node->state));
-    const bool node_open = ImGui::TreeNodeEx(label.c_str(), flags);
+    const std::string label = std::string(icon_for_type(feature->type)) + " " + feature->name + "##feature_" + std::to_string(feature->id);
+    ImGui::PushStyleColor(ImGuiCol_Text, color_for_state(feature->state));
+    const bool feature_open = ImGui::TreeNodeEx(label.c_str(), flags);
     ImGui::PopStyleColor();
 
-    if (node->type == model::FeatureType::SketchFeature && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    if (feature->type == model::FeatureType::SketchFeature && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         open_sketch_request_ = true;
     }
 
     if (ImGui::BeginPopupContextItem()) {
         if (ImGui::MenuItem("Edit")) {
-            rebuild_intent_ = RebuildIntent{false, node->id};
+            rebuild_intent_ = RebuildIntent{false, feature->id};
         }
 
         if (ImGui::MenuItem("Rename")) {
-            rename_node_id_ = node->id;
-            std::snprintf(rename_buffer_.data(), rename_buffer_.size(), "%s", node->name.c_str());
+            rename_feature_id_ = feature->id;
+            std::snprintf(rename_buffer_.data(), rename_buffer_.size(), "%s", feature->name.c_str());
             ImGui::OpenPopup("Rename Feature");
         }
 
-        const bool suppressed = node->state == model::FeatureState::Suppressed || node->suppressed;
+        const bool suppressed = feature->state == model::FeatureState::Suppressed || feature->suppressed;
         if (!suppressed) {
             if (ImGui::MenuItem("Suppress")) {
-                if (tree_->set_suppressed(node->id, true) == model::FeatureTreeError::Ok) {
-                    rebuild_intent_ = RebuildIntent{false, node->id};
+                if (tree_->set_suppressed(feature->id, true) == model::FeatureTreeError::Ok) {
+                    rebuild_intent_ = RebuildIntent{false, feature->id};
                 }
             }
         } else {
             if (ImGui::MenuItem("Unsuppress")) {
-                if (tree_->set_suppressed(node->id, false) == model::FeatureTreeError::Ok) {
-                    rebuild_intent_ = RebuildIntent{false, node->id};
+                if (tree_->set_suppressed(feature->id, false) == model::FeatureTreeError::Ok) {
+                    rebuild_intent_ = RebuildIntent{false, feature->id};
                 }
             }
         }
 
-        if (node->parent != nullptr && ImGui::MenuItem("Delete")) {
-            const uint32_t rebuild_start = node->parent->id;
-            if (tree_->delete_feature(node->id) == model::FeatureTreeError::Ok) {
+        if (feature->parent != nullptr && ImGui::MenuItem("Delete")) {
+            const uint32_t rebuild_start = feature->parent->id;
+            if (tree_->delete_feature(feature->id) == model::FeatureTreeError::Ok) {
                 rebuild_intent_ = RebuildIntent{false, rebuild_start};
             }
         }
@@ -132,22 +208,22 @@ void FeatureTreePanel::draw_node(model::FeatureNode* node) {
     }
 
     if (ImGui::BeginDragDropSource()) {
-        const uint32_t drag_id = node->id;
+        const uint32_t drag_id = feature->id;
         ImGui::SetDragDropPayload("VULCANCAD_FEATURE_NODE", &drag_id, sizeof(drag_id));
-        ImGui::Text("Move %s", node->name.c_str());
+        ImGui::Text("Move %s", feature->name.c_str());
         ImGui::EndDragDropSource();
     }
 
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("VULCANCAD_FEATURE_NODE")) {
             const uint32_t dragged_id = *static_cast<const uint32_t*>(payload->Data);
-            if (dragged_id != node->id && node->parent != nullptr) {
-                auto& siblings = node->parent->children;
-                const auto it = std::find(siblings.begin(), siblings.end(), node);
+            if (dragged_id != feature->id && feature->parent != nullptr) {
+                auto& siblings = feature->parent->children;
+                const auto it = std::find(siblings.begin(), siblings.end(), feature);
                 if (it != siblings.end()) {
                     const size_t insert_index = static_cast<size_t>(std::distance(siblings.begin(), it)) + 1U;
-                    if (tree_->reorder_feature(dragged_id, node->parent->id, insert_index) == model::FeatureTreeError::Ok) {
-                        rebuild_intent_ = RebuildIntent{false, node->parent->id};
+                    if (tree_->reorder_feature(dragged_id, feature->parent->id, insert_index) == model::FeatureTreeError::Ok) {
+                        rebuild_intent_ = RebuildIntent{false, feature->parent->id};
                     }
                 }
             }
@@ -155,17 +231,19 @@ void FeatureTreePanel::draw_node(model::FeatureNode* node) {
         ImGui::EndDragDropTarget();
     }
 
-    if (node_open) {
-        if (node->type == model::FeatureType::SketchFeature) {
+    if (feature_open) {
+        if (feature->type == model::FeatureType::SketchFeature) {
             constexpr ImGuiSelectableFlags plane_flags = ImGuiSelectableFlags_AllowDoubleClick;
             if (ImGui::Selectable("Plane.001", false, plane_flags) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 open_plane_properties_request_ = true;
                 open_sketch_request_ = false;
             }
+
+            draw_sketch_entity_hierarchy();
         }
 
-        for (model::FeatureNode* child : node->children) {
-            draw_node(child);
+        for (model::FeatureNode* child : feature->children) {
+            draw_feature_node(child);
         }
         ImGui::TreePop();
     }
@@ -210,30 +288,57 @@ void FeatureTreePanel::draw() {
     if (tree_ == nullptr || tree_->root() == nullptr) {
         ImGui::TextDisabled("Feature tree not initialized");
     } else {
-        draw_node(tree_->root());
+        draw_feature_node(tree_->root());
     }
 
-    if (rename_node_id_ != 0U) {
+    if (rename_feature_id_ != 0U) {
         ImGui::SetNextWindowSize(ImVec2(360.0f, 120.0f), ImGuiCond_Appearing);
         if (ImGui::BeginPopupModal("Rename Feature", nullptr, ImGuiWindowFlags_NoResize)) {
             ImGui::InputText("Name", rename_buffer_.data(), rename_buffer_.size());
             if (ImGui::Button("Apply")) {
-                if (tree_ != nullptr && tree_->rename_feature(rename_node_id_, std::string(rename_buffer_.data())) == model::FeatureTreeError::Ok) {
-                    rebuild_intent_ = RebuildIntent{false, rename_node_id_};
+                if (tree_ != nullptr && tree_->rename_feature(rename_feature_id_, std::string(rename_buffer_.data())) == model::FeatureTreeError::Ok) {
+                    rebuild_intent_ = RebuildIntent{false, rename_feature_id_};
                 }
-                rename_node_id_ = 0U;
+                rename_feature_id_ = 0U;
                 rename_buffer_.fill('\0');
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
             if (ImGui::Button("Cancel")) {
-                rename_node_id_ = 0U;
+                rename_feature_id_ = 0U;
                 rename_buffer_.fill('\0');
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         } else {
             ImGui::OpenPopup("Rename Feature");
+        }
+    }
+
+    if (edit_point_id_ != 0U) {
+        ImGui::SetNextWindowSize(ImVec2(380.0f, 140.0f), ImGuiCond_Appearing);
+        if (ImGui::BeginPopupModal("Edit Point Coordinates", nullptr, ImGuiWindowFlags_NoResize)) {
+            ImGui::DragFloat2("XY (mm)", &edit_point_value_.x, 0.1f, -100000.0f, 100000.0f, "%.3f");
+            if (ImGui::Button("Apply")) {
+                if (sketch_document_ != nullptr) {
+                    sketch::SketchEntity* point_entity = sketch_document_->find_entity(edit_point_id_);
+                    if (point_entity != nullptr) {
+                        (void)sketch::set_point(point_entity, 0U, edit_point_value_);
+                        sketch_document_->solve();
+                    }
+                }
+
+                edit_point_id_ = 0U;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) {
+                edit_point_id_ = 0U;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        } else {
+            ImGui::OpenPopup("Edit Point Coordinates");
         }
     }
 

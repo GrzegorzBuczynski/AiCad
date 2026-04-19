@@ -20,6 +20,7 @@ find_package(OCCT QUIET)
 add_executable(VulcanCAD
     src/main.cpp
     src/app/Application.cpp
+    src/app/GeometryIpc.cpp
     src/app/Window.cpp
     src/renderer/VulkanContext.cpp
     src/renderer/RenderFrame.cpp

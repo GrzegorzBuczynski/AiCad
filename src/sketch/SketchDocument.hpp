@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <unordered_set>
 #include <vector>
 
@@ -61,6 +62,13 @@ public:
      * @return Created entity id.
      */
     entity_id add_line(const glm::vec2& p1, const glm::vec2& p2, bool construction = false);
+
+    /**
+     * @brief Returns point entities referenced by a line.
+     * @param line_id Line entity id.
+     * @return Pair of endpoint point ids when entity is a line.
+     */
+    [[nodiscard]] std::optional<std::pair<entity_id, entity_id>> line_points(entity_id line_id) const;
 
     /**
      * @brief Creates a circle entity.
@@ -211,6 +219,9 @@ private:
     constraint_id next_constraint_id_ = 1U;
     bool snap_enabled_ = true;
     bool active_ = false;
+
+    void sync_lines_from_points();
+    void sync_points_from_lines();
 };
 
 }  // namespace sketch

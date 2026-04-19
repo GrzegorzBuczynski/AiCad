@@ -22,6 +22,8 @@ struct PointEntity {
  * @brief Sketch line entity.
  */
 struct LineEntity {
+    entity_id point_a = 0U;
+    entity_id point_b = 0U;
     glm::vec2 p1{0.0f, 0.0f};
     glm::vec2 p2{10.0f, 0.0f};
 };

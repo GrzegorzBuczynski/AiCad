@@ -21,7 +21,7 @@ namespace model {
  */
 enum class FeatureTreeError {
     Ok,
-    NodeNotFound,
+    FeatureNotFound,
     InvalidParent,
     InvalidOperation,
     InvalidName,
@@ -44,7 +44,7 @@ struct RebuildDelegateResult {
  */
 struct RebuildRequest {
     bool full_rebuild = true;
-    uint32_t start_node_id = 0U;
+    uint32_t start_feature_id = 0U;
 };
 
 /**
@@ -53,7 +53,7 @@ struct RebuildRequest {
 struct RebuildResult {
     bool success = true;
     bool worker_crashed = false;
-    uint32_t failed_node_id = 0U;
+    uint32_t failed_feature_id = 0U;
     FeatureTreeError error = FeatureTreeError::Ok;
 };
 
@@ -71,42 +71,42 @@ public:
     FeatureTree();
 
     /**
-     * @brief Creates feature node under selected parent.
+     * @brief Creates feature under selected parent feature.
      * @param type Feature type.
      * @param name User-visible feature name.
-     * @param parent_id Parent node id.
+     * @param parent_id Parent feature id.
      * @param error Optional output error code.
-     * @return Created node id or 0 on failure.
+     * @return Created feature id or 0 on failure.
      */
     uint32_t create_feature(FeatureType type, const std::string& name, uint32_t parent_id, FeatureTreeError* error = nullptr);
 
     /**
      * @brief Renames an existing feature.
-     * @param node_id Target node id.
+    * @param feature_id Target feature id.
      * @param name New feature name.
      * @return Operation status.
      */
-    FeatureTreeError rename_feature(uint32_t node_id, const std::string& name);
+    FeatureTreeError rename_feature(uint32_t feature_id, const std::string& name);
 
     /**
      * @brief Sets suppression state for selected feature.
-     * @param node_id Target node id.
+    * @param feature_id Target feature id.
      * @param suppressed Suppression flag.
      * @return Operation status.
      */
-    FeatureTreeError set_suppressed(uint32_t node_id, bool suppressed);
+    FeatureTreeError set_suppressed(uint32_t feature_id, bool suppressed);
 
     /**
-     * @brief Deletes node subtree.
-     * @param node_id Node id to delete.
+     * @brief Deletes feature subtree.
+    * @param feature_id Feature id to delete.
      * @return Operation status.
      */
-    FeatureTreeError delete_feature(uint32_t node_id);
+    FeatureTreeError delete_feature(uint32_t feature_id);
 
     /**
-     * @brief Reorders dragged node into target parent at selected index.
-     * @param dragged_id Dragged node id.
-     * @param target_parent_id New parent id.
+     * @brief Reorders dragged feature into target parent at selected index.
+     * @param dragged_id Dragged feature id.
+     * @param target_parent_id New parent feature id.
      * @param insert_index Child insertion index.
      * @return Operation status.
      */
@@ -114,11 +114,11 @@ public:
 
     /**
      * @brief Sets explicit feature state.
-     * @param node_id Target node id.
+    * @param feature_id Target feature id.
      * @param state New state value.
      * @return Operation status.
      */
-    FeatureTreeError set_feature_state(uint32_t node_id, FeatureState state);
+    FeatureTreeError set_feature_state(uint32_t feature_id, FeatureState state);
 
     /**
      * @brief Executes full or partial rebuild in topological order.
@@ -137,34 +137,34 @@ public:
         const StageCallback& repaint);
 
     /**
-     * @brief Returns root node.
-     * @return Pointer to root node.
+     * @brief Returns root feature.
+     * @return Pointer to root feature.
      */
     [[nodiscard]] FeatureNode* root();
 
     /**
-     * @brief Returns root node.
-     * @return Pointer to root node.
+     * @brief Returns root feature.
+     * @return Pointer to root feature.
      */
     [[nodiscard]] const FeatureNode* root() const;
 
     /**
-     * @brief Finds node by id.
-     * @param node_id Node id.
-     * @return Pointer to node or nullptr.
+     * @brief Finds feature by id.
+    * @param feature_id Feature id.
+     * @return Pointer to feature or nullptr.
      */
-    [[nodiscard]] FeatureNode* find_node(uint32_t node_id);
+    [[nodiscard]] FeatureNode* find_feature(uint32_t feature_id);
 
     /**
-     * @brief Finds node by id.
-     * @param node_id Node id.
-     * @return Pointer to node or nullptr.
+     * @brief Finds feature by id.
+    * @param feature_id Feature id.
+     * @return Pointer to feature or nullptr.
      */
-    [[nodiscard]] const FeatureNode* find_node(uint32_t node_id) const;
+    [[nodiscard]] const FeatureNode* find_feature(uint32_t feature_id) const;
 
     /**
-     * @brief Returns total number of nodes.
-     * @return Node count.
+     * @brief Returns total number of features.
+     * @return Feature count.
      */
     [[nodiscard]] size_t node_count() const;
 

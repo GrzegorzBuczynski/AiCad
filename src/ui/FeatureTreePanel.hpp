@@ -2,11 +2,16 @@
 
 #include <array>
 #include <optional>
+#include <glm/vec2.hpp>
 #include <string>
 #include <vector>
 
 #include "model/FeatureTree.hpp"
 #include "ui/Panel.hpp"
+
+namespace sketch {
+class SketchDocument;
+}
 
 namespace ui {
 
@@ -15,7 +20,7 @@ namespace ui {
  */
 struct RebuildIntent {
     bool full_rebuild = false;
-    uint32_t start_node_id = 0U;
+    uint32_t start_feature_id = 0U;
 };
 
 /**
@@ -28,6 +33,12 @@ public:
      * @param tree Tree model pointer.
      */
     void set_feature_tree(model::FeatureTree* tree);
+
+    /**
+     * @brief Sets bound sketch document for entity hierarchy visualization.
+     * @param document Sketch document pointer.
+     */
+    void set_sketch_document(sketch::SketchDocument* document);
 
     /**
      * @brief Draws the feature tree panel.
@@ -59,14 +70,18 @@ public:
     void set_font_scale(float scale);
 
 private:
-    void draw_node(model::FeatureNode* node);
+    void draw_feature_node(model::FeatureNode* feature);
     [[nodiscard]] static const char* icon_for_type(model::FeatureType type);
     [[nodiscard]] static uint32_t color_for_state(model::FeatureState state);
+    void draw_sketch_entity_hierarchy();
 
     model::FeatureTree* tree_ = nullptr;
+    sketch::SketchDocument* sketch_document_ = nullptr;
     std::optional<RebuildIntent> rebuild_intent_{};
-    uint32_t rename_node_id_ = 0U;
+    uint32_t rename_feature_id_ = 0U;
     std::array<char, 128> rename_buffer_{};
+    uint32_t edit_point_id_ = 0U;
+    glm::vec2 edit_point_value_{0.0f, 0.0f};
     bool open_sketch_request_ = false;
     bool open_plane_properties_request_ = false;
     float font_scale_ = 1.0f;

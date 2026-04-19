@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 
 #include "app/Window.hpp"
+#include "app/GeometryIpc.hpp"
 #include "renderer/RenderFrame.hpp"
 #include "renderer/VulkanContext.hpp"
 #include "model/FeatureTree.hpp"
@@ -73,13 +74,16 @@ private:
     void sync_camera_to_viewport();
     void persist_camera_session() const;
     void process_feature_tree_actions();
-    bool execute_feature_rebuild(const model::RebuildRequest& request, const std::string& payload_override = "", bool allow_retry_popup = true);
+    bool execute_feature_rebuild(
+        const model::RebuildRequest& request,
+        const std::optional<ipc::GeometryRequest>& request_override = std::nullopt,
+        bool allow_retry_popup = true);
     void draw_worker_retry_popup();
 
     struct WorkerRetryContext {
         model::RebuildRequest request{};
-        uint32_t failed_node_id = 0U;
-        std::array<char, 2048> payload_buffer{};
+        uint32_t failed_feature_id = 0U;
+        ipc::GeometryRequest edited_request{};
     };
 
     bool running_ = false;
