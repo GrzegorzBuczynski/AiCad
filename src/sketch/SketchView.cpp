@@ -152,6 +152,11 @@ SketchView::SnapResult SketchView::compute_snap(
 
 void SketchView::request_open_plane_properties() {
     show_plane_properties_ = true;
+    request_sync_plane_editor_from_document();
+}
+
+void SketchView::request_sync_plane_editor_from_document() {
+    sync_plane_editor_from_document_ = true;
 }
 
 void SketchView::draw_overlay(
@@ -221,6 +226,7 @@ void SketchView::draw_overlay(
         ImGui::TextUnformatted("Plane: Plane.001");
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             show_plane_properties_ = true;
+            request_sync_plane_editor_from_document();
         }
 
         ImGui::SameLine();
@@ -231,13 +237,20 @@ void SketchView::draw_overlay(
     }
 
     if (show_plane_properties_) {
-        Plane plane = document.plane();
+        if (sync_plane_editor_from_document_) {
+            const Plane& plane = document.plane();
+            plane_origin_edit_ = plane.origin;
+            plane_normal_edit_ = plane.normal;
+            sync_plane_editor_from_document_ = false;
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(440.0f, 280.0f), ImGuiCond_FirstUseEver);
         bool keep_open = true;
         if (ImGui::Begin("Plane Properties", &keep_open)) {
-            ImGui::DragFloat3("Origin", &plane.origin.x, 0.1f, -10000.0f, 10000.0f, "%.3f");
-            ImGui::DragFloat3("Normal", &plane.normal.x, 0.01f, -1.0f, 1.0f, "%.3f");
+            ImGui::DragFloat3("Origin", &plane_origin_edit_.x, 0.1f, -10000.0f, 10000.0f, "%.3f");
+            ImGui::DragFloat3("Normal", &plane_normal_edit_.x, 0.01f, -1.0f, 1.0f, "%.3f");
             if (ImGui::Button("Apply Plane")) {
-                document.set_plane(plane);
+                document.set_plane(Plane{plane_origin_edit_, plane_normal_edit_});
             }
 
             if (GridFeature* grid = document.active_grid_feature()) {

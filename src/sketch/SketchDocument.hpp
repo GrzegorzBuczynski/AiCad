@@ -8,12 +8,15 @@
 #include <glm/glm.hpp>
 
 #include "geometry/IGeometryKernel.hpp"
+#include "model/Plane.hpp"
+#include "sketch/GridFeature.hpp"
 #include "sketch/SketchConstraint.hpp"
 #include "sketch/SketchEntity.hpp"
-#include "sketch/Plane.hpp"
 #include "sketch/SketchSolver.hpp"
 
 namespace sketch {
+
+using Plane = model::Plane;
 
 /**
  * @brief Mutable sketch model containing entities and constraints.

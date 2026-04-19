@@ -115,6 +115,12 @@ public:
      */
     bool from_json(const nlohmann::json& json_state);
 
+    /**
+     * @brief Returns whether camera is currently in mouse drag interaction.
+     * @return True when middle or right mouse button drag is active.
+     */
+    [[nodiscard]] bool is_interacting() const;
+
 private:
     void orbit(float delta_x, float delta_y);
     void pan(float delta_x, float delta_y);

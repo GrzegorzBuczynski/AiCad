@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string_view>
 
 #include <SDL3/SDL.h>
@@ -170,7 +171,46 @@ void Application::run() {
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
             window_.process_event(event);
-            if (!sketch_document_.is_active()) {
+            const bool camera_mouse_event =
+                event.type == SDL_EVENT_MOUSE_MOTION ||
+                event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                event.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                event.type == SDL_EVENT_MOUSE_WHEEL;
+            const bool camera_keyboard_event =
+                event.type == SDL_EVENT_KEY_DOWN ||
+                event.type == SDL_EVENT_KEY_UP;
+
+            const auto is_point_over_viewport = [this](float x, float y) {
+                const ImVec2 origin = viewport_panel_.content_origin();
+                const ImVec2 size = viewport_panel_.content_size();
+                if (size.x <= 1.0f || size.y <= 1.0f) {
+                    return false;
+                }
+
+                return x >= origin.x && x <= origin.x + size.x && y >= origin.y && y <= origin.y + size.y;
+            };
+
+            if (camera_mouse_event) {
+                float mouse_x = 0.0f;
+                float mouse_y = 0.0f;
+                if (event.type == SDL_EVENT_MOUSE_MOTION) {
+                    mouse_x = static_cast<float>(event.motion.x);
+                    mouse_y = static_cast<float>(event.motion.y);
+                } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                    mouse_x = static_cast<float>(event.button.x);
+                    mouse_y = static_cast<float>(event.button.y);
+                } else {
+                    SDL_GetMouseState(&mouse_x, &mouse_y);
+                }
+
+                const bool over_viewport = is_point_over_viewport(mouse_x, mouse_y);
+                const bool allow_camera_drag = !sketch_document_.is_active() && (over_viewport || camera_.is_interacting());
+                const bool allow_camera_wheel = event.type == SDL_EVENT_MOUSE_WHEEL && over_viewport;
+
+                if (allow_camera_drag || allow_camera_wheel) {
+                    camera_.handle_event(event);
+                }
+            } else if (camera_keyboard_event && !sketch_document_.is_active()) {
                 camera_.handle_event(event);
             }
 
@@ -439,6 +479,12 @@ void Application::build_docked_layout() {
     draw_menu_bar();
 
     feature_tree_panel_.draw();
+    viewport_panel_.set_sketch_plane(sketch_document_.plane());
+    if (const sketch::GridFeature* grid = sketch_document_.active_grid_feature()) {
+        viewport_panel_.set_grid_feature(*grid);
+    } else {
+        viewport_panel_.set_grid_feature(std::nullopt);
+    }
     viewport_panel_.set_sketch_profiles(sketch_document_.extract_preview_profiles());
 
     viewport_panel_.draw();

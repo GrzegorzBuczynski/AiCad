@@ -238,6 +238,10 @@ bool Camera::from_json(const nlohmann::json& json_state) {
     return true;
 }
 
+bool Camera::is_interacting() const {
+    return middle_button_down_ || right_button_down_;
+}
+
 void Camera::orbit(float delta_x, float delta_y) {
     const glm::vec3 offset = state_.position - state_.target;
     glm::quat yaw = glm::angleAxis(-delta_x * k_orbit_sensitivity, up_direction());

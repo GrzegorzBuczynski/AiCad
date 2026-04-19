@@ -41,7 +41,7 @@ void draw_sketch_profiles(
     const ImVec2& origin,
     const ImVec2& size,
     const std::vector<geometry::Profile>& profiles,
-    const sketch::Plane& plane) {
+    const model::Plane& plane) {
     constexpr float k_mm_to_world = 0.02f;
 
     const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
@@ -81,7 +81,7 @@ void draw_grid_feature(
     }
 
     const sketch::GridFeature& grid = *grid_feature;
-    const sketch::Plane& plane = grid.plane;
+    const model::Plane& plane = grid.plane;
     const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
     const glm::vec3 helper = std::abs(normal.z) > 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{0.0f, 0.0f, 1.0f};
     const glm::vec3 u = glm::normalize(glm::cross(helper, normal));
@@ -121,7 +121,8 @@ void ViewportPanel::set_camera_matrices(const glm::mat4& view, const glm::mat4& 
 }
 
 void ViewportPanel::draw() {
-    ImGui::Begin("Viewport");
+    constexpr ImGuiWindowFlags viewport_flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::Begin("Viewport", nullptr, viewport_flags);
     ImGui::SetWindowFontScale(font_scale_);
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -185,7 +186,6 @@ void ViewportPanel::draw() {
         ImGui::Text("Projection matrix[0][0]: %.3f", projection_[0][0]);
         ImGui::Text("VP matrix[0][0]: %.3f", view_projection_[0][0]);
 
-        ImGui::Dummy(avail);
     }
 
     ImGui::End();
@@ -207,7 +207,7 @@ void ViewportPanel::set_sketch_profiles(const std::vector<geometry::Profile>& pr
     sketch_profiles_ = profiles;
 }
 
-void ViewportPanel::set_sketch_plane(const sketch::Plane& plane) {
+void ViewportPanel::set_sketch_plane(const model::Plane& plane) {
     sketch_plane_ = plane;
 }
 

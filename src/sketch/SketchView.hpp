@@ -59,8 +59,13 @@ private:
         const glm::mat4& view_projection,
         const ImVec2& mouse) const;
 
+    void request_sync_plane_editor_from_document();
+
     std::optional<glm::vec2> pending_line_start_{};
     bool show_plane_properties_ = false;
+    bool sync_plane_editor_from_document_ = true;
+    glm::vec3 plane_origin_edit_{0.0f, 0.0f, 0.0f};
+    glm::vec3 plane_normal_edit_{0.0f, 0.0f, 1.0f};
 };
 
 }  // namespace sketch

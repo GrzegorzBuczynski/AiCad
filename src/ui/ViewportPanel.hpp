@@ -8,7 +8,8 @@
 #include <glm/glm.hpp>
 
 #include "geometry/IGeometryKernel.hpp"
-#include "sketch/Plane.hpp"
+#include "model/Plane.hpp"
+#include "sketch/GridFeature.hpp"
 #include "ui/Panel.hpp"
 
 namespace ui {
@@ -65,7 +66,7 @@ public:
      * @brief Sets sketch plane used to display sketch entities in 3D viewport.
      * @param plane Active sketch plane.
      */
-    void set_sketch_plane(const sketch::Plane& plane);
+    void set_sketch_plane(const model::Plane& plane);
 
     /**
      * @brief Sets optional grid feature visualization data.
@@ -85,7 +86,7 @@ private:
     glm::mat4 projection_{};
     glm::mat4 view_projection_{};
     std::vector<geometry::Profile> sketch_profiles_{};
-    sketch::Plane sketch_plane_{glm::vec3{0.0f, 0.0f, 0.0f}};
+    model::Plane sketch_plane_{glm::vec3{0.0f, 0.0f, 0.0f}};
     std::optional<sketch::GridFeature> grid_feature_{};
     ImVec2 content_origin_{0.0f, 0.0f};
     ImVec2 content_size_{0.0f, 0.0f};
