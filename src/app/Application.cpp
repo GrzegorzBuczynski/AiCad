@@ -77,13 +77,15 @@ bool Application::init() {
 
     feature_tree_panel_.set_feature_tree(&feature_tree_);
     feature_tree_panel_.set_sketch_document(&sketch_document_);
-    if (const model::FeatureNode* root = feature_tree_.root()) {
-        model::FeatureTreeError tree_error = model::FeatureTreeError::Ok;
-        const uint32_t sketch_id = feature_tree_.create_feature(model::FeatureType::SketchFeature, "Sketch.001", root->id, &tree_error);
-        if (sketch_id != 0U && tree_error == model::FeatureTreeError::Ok) {
-            (void)feature_tree_.create_feature(model::FeatureType::ExtrudeFeature, "Pad.001", root->id, nullptr);
-            (void)feature_tree_.create_feature(model::FeatureType::FilletFeature, "Fillet.001", root->id, nullptr);
-            (void)feature_tree_.create_feature(model::FeatureType::ShellFeature, "Shell.001", root->id, nullptr);
+    if (!load_feature_tree_session("session/feature_tree.json")) {
+        if (const model::FeatureNode* root = feature_tree_.root()) {
+            model::FeatureTreeError tree_error = model::FeatureTreeError::Ok;
+            const uint32_t sketch_id = feature_tree_.create_feature(model::FeatureType::SketchFeature, "Sketch.001", root->id, &tree_error);
+            if (sketch_id != 0U && tree_error == model::FeatureTreeError::Ok) {
+                (void)feature_tree_.create_feature(model::FeatureType::ExtrudeFeature, "Pad.001", root->id, nullptr);
+                (void)feature_tree_.create_feature(model::FeatureType::FilletFeature, "Fillet.001", root->id, nullptr);
+                (void)feature_tree_.create_feature(model::FeatureType::ShellFeature, "Shell.001", root->id, nullptr);
+            }
         }
     }
 
@@ -200,6 +202,7 @@ void Application::run() {
 
 void Application::shutdown() {
     persist_camera_session();
+    persist_feature_tree_session("session/feature_tree.json");
     g_orchestrator.shutdown();
     shutdown_imgui();
 
@@ -218,6 +221,44 @@ void Application::shutdown() {
 
 const std::string& Application::last_error() const {
     return last_error_;
+}
+
+bool Application::load_feature_tree_session(const char* path) {
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    std::string data;
+    file.seekg(0, std::ios::end);
+    const std::streampos size = file.tellg();
+    if (size <= 0) {
+        return false;
+    }
+
+    data.resize(static_cast<size_t>(size));
+    file.seekg(0, std::ios::beg);
+    file.read(data.data(), static_cast<std::streamsize>(data.size()));
+    if (!file.good() && !file.eof()) {
+        return false;
+    }
+
+    return feature_tree_.restore_json_snapshot(data);
+}
+
+void Application::persist_feature_tree_session(const char* path) const {
+    const std::filesystem::path session_path(path);
+    std::error_code error_code;
+    if (session_path.has_parent_path()) {
+        std::filesystem::create_directories(session_path.parent_path(), error_code);
+    }
+
+    std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        return;
+    }
+
+    file << feature_tree_.to_json_snapshot();
 }
 
 bool Application::load_settings(const char* path) {

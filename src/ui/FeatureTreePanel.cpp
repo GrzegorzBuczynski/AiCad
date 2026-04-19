@@ -88,7 +88,11 @@ void FeatureTreePanel::draw_sketch_entity_hierarchy() {
     }
 
     const ImGuiTreeNodeFlags collector_flags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanFullWidth;
-    if (!ImGui::TreeNodeEx("[GEO] Geometry", collector_flags)) {
+    const float geometry_align_offset = ImGui::GetTreeNodeToLabelSpacing();
+    ImGui::Unindent(geometry_align_offset);
+    const bool geometry_open = ImGui::TreeNodeEx("[GEO] Geometry", collector_flags);
+    ImGui::Indent(geometry_align_offset);
+    if (!geometry_open) {
         return;
     }
 
@@ -127,10 +131,13 @@ void FeatureTreePanel::draw_sketch_entity_hierarchy() {
                 return;
             }
 
+            std::array<char, 64> coords_buffer{};
+            std::snprintf(coords_buffer.data(), coords_buffer.size(), "%.3f, %.3f", point->pos.x, point->pos.y);
+
             const std::string point_label =
                 std::string("[PT] ") + slot_label +
                 " Point." + std::to_string(point_entity->id) +
-                " (" + std::to_string(point->pos.x) + ", " + std::to_string(point->pos.y) + ")##sk_pt_" +
+                " (" + std::string(coords_buffer.data()) + ")##sk_pt_" +
                 std::to_string(point_entity->id) + "_" + slot_label;
 
             constexpr ImGuiSelectableFlags point_flags = ImGuiSelectableFlags_AllowDoubleClick;
@@ -160,10 +167,14 @@ void FeatureTreePanel::draw_feature_node(model::FeatureNode* feature) {
         flags |= ImGuiTreeNodeFlags_Leaf;
     }
 
+    ImGui::SetNextItemOpen(feature->expanded, ImGuiCond_Always);
     const std::string label = std::string(icon_for_type(feature->type)) + " " + feature->name + "##feature_" + std::to_string(feature->id);
     ImGui::PushStyleColor(ImGuiCol_Text, color_for_state(feature->state));
     const bool feature_open = ImGui::TreeNodeEx(label.c_str(), flags);
     ImGui::PopStyleColor();
+    if (ImGui::IsItemToggledOpen()) {
+        feature->expanded = feature_open;
+    }
 
     if (feature->type == model::FeatureType::SketchFeature && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         open_sketch_request_ = true;

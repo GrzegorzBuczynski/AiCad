@@ -554,6 +554,7 @@ nlohmann::json FeatureTree::serialize_node(const FeatureNode* node) const {
         {"name", node->name},
         {"state", to_string(node->state)},
         {"suppressed", node->suppressed},
+        {"expanded", node->expanded},
         {"children", children},
     };
 }
@@ -585,6 +586,9 @@ bool FeatureTree::deserialize_node(const nlohmann::json& data, FeatureNode* pare
     }
     if (data.contains("suppressed")) {
         node->suppressed = data["suppressed"].get<bool>();
+    }
+    if (data.contains("expanded")) {
+        node->expanded = data["expanded"].get<bool>();
     }
 
     for (const auto& child : data["children"]) {

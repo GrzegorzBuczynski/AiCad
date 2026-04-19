@@ -40,6 +40,7 @@ struct FeatureNode {
     std::string name{};
     FeatureState state = FeatureState::Valid;
     bool suppressed = false;
+    bool expanded = true;
     FeatureNode* parent = nullptr;
     std::vector<FeatureNode*> children{};
 };

@@ -74,6 +74,8 @@ private:
     void sync_camera_to_viewport();
     void persist_camera_session() const;
     void process_feature_tree_actions();
+    bool load_feature_tree_session(const char* path);
+    void persist_feature_tree_session(const char* path) const;
     bool execute_feature_rebuild(
         const model::RebuildRequest& request,
         const std::optional<ipc::GeometryRequest>& request_override = std::nullopt,
