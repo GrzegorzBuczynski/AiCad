@@ -10,6 +10,7 @@
 #include "geometry/IGeometryKernel.hpp"
 #include "sketch/SketchConstraint.hpp"
 #include "sketch/SketchEntity.hpp"
+#include "sketch/Plane.hpp"
 #include "sketch/SketchSolver.hpp"
 
 namespace sketch {
@@ -19,6 +20,12 @@ namespace sketch {
  */
 class SketchDocument {
 public:
+    /**
+     * @brief Creates sketch document on a plane defined by feature point.
+     * @param feature_point Feature point used as plane origin.
+     */
+    explicit SketchDocument(const glm::vec3& feature_point);
+
     /**
      * @brief Enters sketch editing mode.
      */
@@ -141,13 +148,65 @@ public:
      */
     [[nodiscard]] const SolveResult& last_solve_result() const;
 
+    /**
+     * @brief Returns active sketch plane.
+     * @return Plane definition.
+     */
+    [[nodiscard]] const Plane& plane() const;
+
+    /**
+     * @brief Sets active sketch plane.
+     * @param plane New plane definition.
+     */
+    void set_plane(const Plane& plane);
+
+    /**
+     * @brief Adds grid feature on current plane.
+     * @return Grid feature id.
+     */
+    uint32_t add_grid_feature_on_plane();
+
+    /**
+     * @brief Returns whether active grid feature exists.
+     * @return True when grid feature exists.
+     */
+    [[nodiscard]] bool has_grid_feature() const;
+
+    /**
+     * @brief Returns active grid feature.
+     * @return Pointer to grid feature or nullptr.
+     */
+    [[nodiscard]] const GridFeature* active_grid_feature() const;
+
+    /**
+     * @brief Returns active grid feature.
+     * @return Pointer to grid feature or nullptr.
+     */
+    GridFeature* active_grid_feature();
+
+    /**
+     * @brief Returns sketch snap state.
+     * @return True when snap is enabled.
+     */
+    [[nodiscard]] bool snap_enabled() const;
+
+    /**
+     * @brief Sets sketch snap state.
+     * @param enabled Snap state.
+     */
+    void set_snap_enabled(bool enabled);
+
 private:
     std::vector<SketchEntity> entities_{};
     std::vector<SketchConstraint> constraints_{};
     SketchSolver solver_{};
     SolveResult last_result_{};
+    Plane plane_;
+    std::vector<GridFeature> grid_features_{};
+    uint32_t next_grid_feature_id_ = 1U;
     entity_id next_entity_id_ = 1U;
     constraint_id next_constraint_id_ = 1U;
+    bool snap_enabled_ = true;
     bool active_ = false;
 };
 

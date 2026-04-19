@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 #include <imgui.h>
 #include <glm/glm.hpp>
@@ -15,11 +16,16 @@ namespace sketch {
 class SketchView {
 public:
     /**
+     * @brief Requests opening plane properties window on next draw.
+     */
+    void request_open_plane_properties();
+
+    /**
      * @brief Draws sketch entities and handles simple editing interactions.
      * @param document Sketch document.
      * @param viewport_origin Top-left viewport position in screen coordinates.
      * @param viewport_size Viewport size in pixels.
-     * @param viewport_hovered True when viewport is hovered.
+     * @param view_projection Current view-projection matrix.
      */
     void draw_overlay(
         SketchDocument& document,
@@ -38,11 +44,13 @@ private:
         const ImVec2& origin,
         const ImVec2& size,
         const glm::mat4& view_projection,
+        const Plane& plane,
         const glm::vec2& world_mm) const;
     [[nodiscard]] std::optional<glm::vec2> screen_to_sketch_mm(
         const ImVec2& origin,
         const ImVec2& size,
         const glm::mat4& view_projection,
+        const Plane& plane,
         const ImVec2& screen) const;
     [[nodiscard]] SnapResult compute_snap(
         const SketchDocument& document,
@@ -52,6 +60,7 @@ private:
         const ImVec2& mouse) const;
 
     std::optional<glm::vec2> pending_line_start_{};
+    bool show_plane_properties_ = false;
 };
 
 }  // namespace sketch

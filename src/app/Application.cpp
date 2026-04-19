@@ -304,12 +304,16 @@ bool Application::init_imgui() {
     style.Colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.95f, 0.97f, 1.0f);
     style.Colors[ImGuiCol_ChildBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.0f);
     style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.91f, 0.93f, 0.96f, 1.0f);
+    style.Colors[ImGuiCol_PopupBg] = ImVec4(0.97f, 0.98f, 1.00f, 0.98f);
     style.Colors[ImGuiCol_TitleBg] = ImVec4(0.84f, 0.88f, 0.94f, 1.0f);
     style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.77f, 0.84f, 0.93f, 1.0f);
     style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.93f, 0.95f, 0.98f, 1.0f);
     style.Colors[ImGuiCol_Header] = ImVec4(0.80f, 0.86f, 0.95f, 1.0f);
     style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.70f, 0.82f, 0.96f, 1.0f);
     style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.56f, 0.74f, 0.94f, 1.0f);
+    style.Colors[ImGuiCol_FrameBg] = ImVec4(0.92f, 0.95f, 0.99f, 1.0f);
+    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.84f, 0.90f, 0.98f, 1.0f);
+    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.77f, 0.86f, 0.97f, 1.0f);
     style.Colors[ImGuiCol_Button] = ImVec4(0.86f, 0.90f, 0.97f, 1.0f);
     style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.74f, 0.84f, 0.96f, 1.0f);
     style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.62f, 0.76f, 0.94f, 1.0f);
@@ -440,7 +444,12 @@ void Application::build_docked_layout() {
     viewport_panel_.draw();
     properties_panel_.draw();
 
-    if (feature_tree_panel_.consume_open_sketch_request()) {
+    const bool open_plane_properties = feature_tree_panel_.consume_open_plane_properties_request();
+    if (open_plane_properties) {
+        sketch_view_.request_open_plane_properties();
+    }
+
+    if (!open_plane_properties && feature_tree_panel_.consume_open_sketch_request()) {
         sketch_document_.enter();
         sketch_document_.solve();
     }

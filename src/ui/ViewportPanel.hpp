@@ -1,12 +1,14 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <vector>
 
 #include <imgui.h>
 #include <glm/glm.hpp>
 
 #include "geometry/IGeometryKernel.hpp"
+#include "sketch/Plane.hpp"
 #include "ui/Panel.hpp"
 
 namespace ui {
@@ -59,15 +61,36 @@ public:
      */
     void set_sketch_profiles(const std::vector<geometry::Profile>& profiles);
 
+    /**
+     * @brief Sets sketch plane used to display sketch entities in 3D viewport.
+     * @param plane Active sketch plane.
+     */
+    void set_sketch_plane(const sketch::Plane& plane);
+
+    /**
+     * @brief Sets optional grid feature visualization data.
+     * @param feature Grid feature to render, or nullopt when absent.
+     */
+    void set_grid_feature(std::optional<sketch::GridFeature> feature);
+
+    /**
+     * @brief Sets viewport-local font scale.
+     * @param scale Requested font scale.
+     */
+    void set_font_scale(float scale);
+
 private:
     ImTextureID viewport_texture_ = static_cast<ImTextureID>(0);
     glm::mat4 view_{};
     glm::mat4 projection_{};
     glm::mat4 view_projection_{};
     std::vector<geometry::Profile> sketch_profiles_{};
+    sketch::Plane sketch_plane_{glm::vec3{0.0f, 0.0f, 0.0f}};
+    std::optional<sketch::GridFeature> grid_feature_{};
     ImVec2 content_origin_{0.0f, 0.0f};
     ImVec2 content_size_{0.0f, 0.0f};
     bool hovered_ = false;
+    float font_scale_ = 1.0f;
 };
 
 }  // namespace ui

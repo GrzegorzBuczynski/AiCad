@@ -4,6 +4,8 @@
 #include <array>
 #include <string>
 
+#include <glm/glm.hpp>
+
 #include "app/Window.hpp"
 #include "renderer/RenderFrame.hpp"
 #include "renderer/VulkanContext.hpp"
@@ -84,7 +86,7 @@ private:
     ui::PropertiesPanel properties_panel_{};
     scene::Camera camera_{};
     scene::State saved_camera_state_{};
-    sketch::SketchDocument sketch_document_{};
+    sketch::SketchDocument sketch_document_{glm::vec3{0.0f, 0.0f, 0.0f}};
     sketch::SketchView sketch_view_{};
 
     vk_wrap::descriptor_pool imgui_descriptor_pool_{};

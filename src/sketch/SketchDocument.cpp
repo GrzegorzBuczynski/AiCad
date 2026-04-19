@@ -16,6 +16,9 @@ bool almost_equal(const glm::vec2& a, const glm::vec2& b, float eps = 1.0e-3f) {
 
 }  // namespace
 
+SketchDocument::SketchDocument(const glm::vec3& feature_point)
+    : plane_(feature_point) {}
+
 void SketchDocument::enter() {
     active_ = true;
 }
@@ -275,6 +278,60 @@ int SketchDocument::dof() const {
 
 const SolveResult& SketchDocument::last_solve_result() const {
     return last_result_;
+}
+
+const Plane& SketchDocument::plane() const {
+    return plane_;
+}
+
+void SketchDocument::set_plane(const Plane& plane) {
+    plane_ = plane;
+    const float len = glm::length(plane_.normal);
+    if (len < 1.0e-6f) {
+        plane_.normal = {0.0f, 0.0f, 1.0f};
+    } else {
+        plane_.normal /= len;
+    }
+
+    if (!grid_features_.empty()) {
+        grid_features_.front().plane = plane_;
+    }
+}
+
+uint32_t SketchDocument::add_grid_feature_on_plane() {
+    if (!grid_features_.empty()) {
+        return grid_features_.front().id;
+    }
+
+    const uint32_t new_id = next_grid_feature_id_++;
+    grid_features_.push_back(GridFeature{new_id, plane_, 1.0f, 10.0f, 60, true});
+    return new_id;
+}
+
+bool SketchDocument::has_grid_feature() const {
+    return !grid_features_.empty();
+}
+
+const GridFeature* SketchDocument::active_grid_feature() const {
+    if (grid_features_.empty()) {
+        return nullptr;
+    }
+    return &grid_features_.front();
+}
+
+GridFeature* SketchDocument::active_grid_feature() {
+    if (grid_features_.empty()) {
+        return nullptr;
+    }
+    return &grid_features_.front();
+}
+
+bool SketchDocument::snap_enabled() const {
+    return snap_enabled_;
+}
+
+void SketchDocument::set_snap_enabled(bool enabled) {
+    snap_enabled_ = enabled;
 }
 
 }  // namespace sketch

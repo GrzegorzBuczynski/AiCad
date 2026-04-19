@@ -40,9 +40,14 @@ void draw_sketch_profiles(
     const glm::mat4& view_projection,
     const ImVec2& origin,
     const ImVec2& size,
-    const std::vector<geometry::Profile>& profiles) {
+    const std::vector<geometry::Profile>& profiles,
+    const sketch::Plane& plane) {
     constexpr float k_mm_to_world = 0.02f;
-    constexpr float k_plane_z = 0.0f;
+
+    const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
+    const glm::vec3 helper = std::abs(normal.z) > 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{0.0f, 0.0f, 1.0f};
+    const glm::vec3 u = glm::normalize(glm::cross(helper, normal));
+    const glm::vec3 v = glm::normalize(glm::cross(normal, u));
 
     for (const geometry::Profile& profile : profiles) {
         if (profile.points.size() < 2U) {
@@ -58,10 +63,48 @@ void draw_sketch_profiles(
             const glm::vec2 a_mm = profile.points[i];
             const glm::vec2 b_mm = profile.points[next];
 
-            const glm::vec3 a_world{a_mm.x * k_mm_to_world, a_mm.y * k_mm_to_world, k_plane_z};
-            const glm::vec3 b_world{b_mm.x * k_mm_to_world, b_mm.y * k_mm_to_world, k_plane_z};
+            const glm::vec3 a_world = plane.origin + u * (a_mm.x * k_mm_to_world) + v * (a_mm.y * k_mm_to_world);
+            const glm::vec3 b_world = plane.origin + u * (b_mm.x * k_mm_to_world) + v * (b_mm.y * k_mm_to_world);
             draw_segment(draw_list, view_projection, origin, size, a_world, b_world, IM_COL32(40, 48, 64, 255), 2.2f);
         }
+    }
+}
+
+void draw_grid_feature(
+    ImDrawList* draw_list,
+    const glm::mat4& view_projection,
+    const ImVec2& origin,
+    const ImVec2& size,
+    const std::optional<sketch::GridFeature>& grid_feature) {
+    if (!grid_feature.has_value() || !grid_feature->visible) {
+        return;
+    }
+
+    const sketch::GridFeature& grid = *grid_feature;
+    const sketch::Plane& plane = grid.plane;
+    const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
+    const glm::vec3 helper = std::abs(normal.z) > 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{0.0f, 0.0f, 1.0f};
+    const glm::vec3 u = glm::normalize(glm::cross(helper, normal));
+    const glm::vec3 v = glm::normalize(glm::cross(normal, u));
+
+    const float minor = std::max(grid.minor_step_mm, 0.1f) * 0.02f;
+    const float major = std::max(grid.major_step_mm, minor);
+    const int half_cells = std::max(grid.half_cells, 1);
+
+    const float extent = static_cast<float>(half_cells) * minor;
+    for (int i = -half_cells; i <= half_cells; ++i) {
+        const float offset = static_cast<float>(i) * minor;
+        const float major_ratio = (major / 0.02f) > 0.0f ? std::abs(std::fmod(offset / 0.02f, major / 0.02f)) : 1.0f;
+        const bool is_major = major_ratio < 0.01f || std::abs(major_ratio - (major / 0.02f)) < 0.01f;
+        const ImU32 color = is_major ? IM_COL32(155, 165, 178, 170) : IM_COL32(205, 214, 224, 150);
+
+        const glm::vec3 a = plane.origin + u * (-extent) + v * offset;
+        const glm::vec3 b = plane.origin + u * extent + v * offset;
+        draw_segment(draw_list, view_projection, origin, size, a, b, color, is_major ? 1.4f : 1.0f);
+
+        const glm::vec3 c = plane.origin + u * offset + v * (-extent);
+        const glm::vec3 d = plane.origin + u * offset + v * extent;
+        draw_segment(draw_list, view_projection, origin, size, c, d, color, is_major ? 1.4f : 1.0f);
     }
 }
 
@@ -79,6 +122,7 @@ void ViewportPanel::set_camera_matrices(const glm::mat4& view, const glm::mat4& 
 
 void ViewportPanel::draw() {
     ImGui::Begin("Viewport");
+    ImGui::SetWindowFontScale(font_scale_);
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     content_origin_ = ImGui::GetCursorScreenPos();
@@ -87,7 +131,8 @@ void ViewportPanel::draw() {
     if (viewport_texture_ != static_cast<ImTextureID>(0) && avail.x > 1.0f && avail.y > 1.0f) {
         ImGui::Image(viewport_texture_, avail);
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
-        draw_sketch_profiles(draw_list, view_projection_, content_origin_, avail, sketch_profiles_);
+        draw_grid_feature(draw_list, view_projection_, content_origin_, avail, grid_feature_);
+        draw_sketch_profiles(draw_list, view_projection_, content_origin_, avail, sketch_profiles_, sketch_plane_);
     } else {
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -95,14 +140,6 @@ void ViewportPanel::draw() {
 
         draw_list->AddRectFilled(origin, end, IM_COL32(244, 247, 251, 255));
         draw_list->AddRect(origin, end, IM_COL32(170, 185, 205, 255));
-
-        const float grid_step = 48.0f;
-        for (float x = origin.x; x < end.x; x += grid_step) {
-            draw_list->AddLine(ImVec2(x, origin.y), ImVec2(x, end.y), IM_COL32(214, 223, 234, 255));
-        }
-        for (float y = origin.y; y < end.y; y += grid_step) {
-            draw_list->AddLine(ImVec2(origin.x, y), ImVec2(end.x, y), IM_COL32(214, 223, 234, 255));
-        }
 
         const ImVec2 center = ImVec2((origin.x + end.x) * 0.5f, (origin.y + end.y) * 0.5f);
         draw_list->AddLine(ImVec2(center.x - 20.0f, center.y), ImVec2(center.x + 20.0f, center.y), IM_COL32(58, 120, 210, 255), 2.0f);
@@ -135,7 +172,8 @@ void ViewportPanel::draw() {
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{2.0f, 0.0f, 0.0f}, IM_COL32(220, 90, 90, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 2.0f, 0.0f}, IM_COL32(80, 170, 110, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, 2.0f}, IM_COL32(58, 120, 210, 255), 2.0f);
-        draw_sketch_profiles(draw_list, view_projection_, origin, avail, sketch_profiles_);
+        draw_grid_feature(draw_list, view_projection_, origin, avail, grid_feature_);
+        draw_sketch_profiles(draw_list, view_projection_, origin, avail, sketch_profiles_, sketch_plane_);
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 16.0f, origin.y + 16.0f));
         ImGui::TextUnformatted("Camera-driven viewport");
@@ -167,6 +205,18 @@ bool ViewportPanel::is_hovered() const {
 
 void ViewportPanel::set_sketch_profiles(const std::vector<geometry::Profile>& profiles) {
     sketch_profiles_ = profiles;
+}
+
+void ViewportPanel::set_sketch_plane(const sketch::Plane& plane) {
+    sketch_plane_ = plane;
+}
+
+void ViewportPanel::set_grid_feature(std::optional<sketch::GridFeature> feature) {
+    grid_feature_ = std::move(feature);
+}
+
+void ViewportPanel::set_font_scale(float scale) {
+    font_scale_ = std::max(scale, 0.7f);
 }
 
 }  // namespace ui
