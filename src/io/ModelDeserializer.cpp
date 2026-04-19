@@ -25,7 +25,7 @@ struct ParsedFeature {
     std::optional<uint32_t> chain_child_id{};
     nlohmann::json dependencies = nlohmann::json::array();
 
-    std::optional<uint32_t> sketch_line_id{};
+    std::vector<uint32_t> sketch_ref_ids{};
     std::optional<uint32_t> sketch_plane_id{};
     std::optional<uint32_t> sketch_id{};
     std::optional<uint32_t> feature_ref_id{};
@@ -172,34 +172,12 @@ std::expected<nlohmann::json, ModelError> resolve_parameter_impl(
 }
 
 std::vector<uint32_t> collect_referenced_children(const ParsedFeature& feature) {
+    (void)feature;
     std::vector<uint32_t> child_ids{};
 
-    const auto add_opt = [&](const std::optional<uint32_t>& value) {
-        if (value.has_value()) {
-            child_ids.push_back(*value);
-        }
-    };
-
-    add_opt(feature.sketch_line_id);
-    add_opt(feature.sketch_plane_id);
-    add_opt(feature.sketch_id);
-    add_opt(feature.feature_ref_id);
-
-    if (const auto* line = std::get_if<model::LineObject>(&feature.object_data)) {
-        child_ids.push_back(line->point_a);
-        child_ids.push_back(line->point_b);
-    }
-
-    if (const auto* plane = std::get_if<model::PlaneObject>(&feature.object_data)) {
-        child_ids.push_back(plane->origin_point);
-        child_ids.push_back(plane->vector_ref);
-    }
-
-    for (const auto& dep : feature.dependencies) {
-        if (dep.is_number_unsigned()) {
-            child_ids.push_back(dep.get<uint32_t>());
-        }
-    }
+    // Keep tree topology strictly structural (root/chain/parent). Cross-feature
+    // references like sketch->line, line->point, plane->point are data links
+    // consumed by other modules and must not create tree edges.
 
     return child_ids;
 }
@@ -294,7 +272,15 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
         if (parsed.type == "SketchFeature") {
             if (item.contains("payload") && item.at("payload").is_object() &&
                 item.at("payload").contains("id") && item.at("payload").at("id").is_number_unsigned()) {
-                parsed.sketch_line_id = item.at("payload").at("id").get<uint32_t>();
+                parsed.sketch_ref_ids.push_back(item.at("payload").at("id").get<uint32_t>());
+            }
+            if (item.contains("payload") && item.at("payload").is_object() &&
+                item.at("payload").contains("ids") && item.at("payload").at("ids").is_array()) {
+                for (const auto& id_ref : item.at("payload").at("ids")) {
+                    if (id_ref.is_number_unsigned()) {
+                        parsed.sketch_ref_ids.push_back(id_ref.get<uint32_t>());
+                    }
+                }
             }
             if (item.contains("plane") && item.at("plane").is_number_unsigned()) {
                 parsed.sketch_plane_id = item.at("plane").get<uint32_t>();

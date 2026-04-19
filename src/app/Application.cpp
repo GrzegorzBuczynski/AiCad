@@ -55,7 +55,7 @@ uint32_t max_feature_id_in_tree(const model::FeatureTree& tree) {
 
 struct GeometryExportBundle {
     nlohmann::ordered_json extra_features = nlohmann::ordered_json::array();
-    std::optional<uint32_t> line_feature_id{};
+    std::vector<uint32_t> line_feature_ids{};
     std::optional<uint32_t> plane_feature_id{};
 };
 
@@ -108,9 +108,7 @@ GeometryExportBundle build_geometry_export_bundle(const sketch::SketchDocument& 
         }
 
         const uint32_t feature_id = next_id++;
-        if (!bundle.line_feature_id.has_value()) {
-            bundle.line_feature_id = feature_id;
-        }
+        bundle.line_feature_ids.push_back(feature_id);
 
         nlohmann::ordered_json feature = nlohmann::ordered_json::object();
         feature["id"] = feature_id;
@@ -984,8 +982,13 @@ void Application::draw_menu_bar() {
                 stack.pop_back();
 
                 if (node->type == model::FeatureType::SketchFeature) {
-                    if (geometry_bundle.line_feature_id.has_value()) {
-                        options.feature_payloads[node->id] = {{"id", *geometry_bundle.line_feature_id}};
+                    if (!geometry_bundle.line_feature_ids.empty()) {
+                        options.feature_payloads[node->id] = nlohmann::ordered_json::object();
+                        options.feature_payloads[node->id]["id"] = geometry_bundle.line_feature_ids.front();
+                        options.feature_payloads[node->id]["ids"] = nlohmann::ordered_json::array();
+                        for (const uint32_t line_id : geometry_bundle.line_feature_ids) {
+                            options.feature_payloads[node->id]["ids"].push_back(line_id);
+                        }
                         if (geometry_bundle.plane_feature_id.has_value()) {
                             options.feature_payloads[node->id]["plane"] = *geometry_bundle.plane_feature_id;
                         }
@@ -1044,30 +1047,31 @@ void Application::draw_menu_bar() {
 
                             if (feature.contains("payload") && feature["payload"].is_object() &&
                                 feature["payload"].contains("id") && feature["payload"]["id"].is_number_unsigned()) {
-                                const uint32_t start_line_id = feature["payload"]["id"].get<uint32_t>();
+                                std::vector<uint32_t> referenced_ids{};
+                                if (feature["payload"].contains("ids") && feature["payload"]["ids"].is_array()) {
+                                    for (const auto& line_id : feature["payload"]["ids"]) {
+                                        if (line_id.is_number_unsigned()) {
+                                            referenced_ids.push_back(line_id.get<uint32_t>());
+                                        }
+                                    }
+                                }
+                                if (referenced_ids.empty()) {
+                                    referenced_ids.push_back(feature["payload"]["id"].get<uint32_t>());
+                                }
 
                                 nlohmann::ordered_json entities = nlohmann::ordered_json::array();
                                 std::unordered_set<uint32_t> emitted_points{};
-                                std::unordered_set<uint32_t> visited_lines{};
 
-                                uint32_t current_line_id = start_line_id;
-                                while (current_line_id != 0U && !visited_lines.contains(current_line_id)) {
-                                    visited_lines.insert(current_line_id);
-
-                                    const auto line_it = feature_by_id.find(current_line_id);
+                                for (const uint32_t ref_id : referenced_ids) {
+                                    const auto line_it = feature_by_id.find(ref_id);
                                     if (line_it == feature_by_id.end() || line_it->second == nullptr) {
-                                        break;
+                                        continue;
                                     }
 
                                     const nlohmann::json& line_feature = *line_it->second;
-                                    if (!line_feature.contains("type") || !line_feature["type"].is_string() ||
-                                        line_feature["type"].get<std::string>() != "Line") {
-                                        break;
-                                    }
-
                                     if (!line_feature.contains("point_a") || !line_feature["point_a"].is_number_unsigned() ||
                                         !line_feature.contains("point_b") || !line_feature["point_b"].is_number_unsigned()) {
-                                        break;
+                                        continue;
                                     }
 
                                     const uint32_t point_a = line_feature["point_a"].get<uint32_t>();
@@ -1106,26 +1110,12 @@ void Application::draw_menu_bar() {
                                     emit_point(point_b);
 
                                     nlohmann::ordered_json line_item = nlohmann::ordered_json::object();
-                                    line_item["id"] = current_line_id;
+                                    line_item["id"] = ref_id;
                                     line_item["construction"] = line_feature.value("construction", false);
                                     line_item["type"] = "Line";
                                     line_item["point_a"] = point_a;
                                     line_item["point_b"] = point_b;
                                     entities.push_back(std::move(line_item));
-
-                                    uint32_t next_line_id = 0U;
-                                    if (line_feature.contains("dependencies") && line_feature["dependencies"].is_object() &&
-                                        line_feature["dependencies"].contains("id") && line_feature["dependencies"]["id"].is_number_unsigned()) {
-                                        const uint32_t candidate = line_feature["dependencies"]["id"].get<uint32_t>();
-                                        const auto next_it = feature_by_id.find(candidate);
-                                        if (next_it != feature_by_id.end() && next_it->second != nullptr &&
-                                            (*next_it->second).contains("type") && (*next_it->second)["type"].is_string() &&
-                                            (*next_it->second)["type"].get<std::string>() == "Line") {
-                                            next_line_id = candidate;
-                                        }
-                                    }
-
-                                    current_line_id = next_line_id;
                                 }
 
                                 if (!entities.empty()) {

@@ -95,6 +95,9 @@ void collect_features(
             if (payload_it->second.contains("id") && payload_it->second["id"].is_number_unsigned()) {
                 feature_json["payload"] = ordered_json::object();
                 feature_json["payload"]["id"] = payload_it->second["id"];
+                if (payload_it->second.contains("ids") && payload_it->second["ids"].is_array()) {
+                    feature_json["payload"]["ids"] = payload_it->second["ids"];
+                }
             }
             if (payload_it->second.contains("plane") && payload_it->second["plane"].is_number_unsigned()) {
                 feature_json["plane"] = payload_it->second["plane"];
