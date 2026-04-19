@@ -47,6 +47,12 @@ const char* FeatureTreePanel::icon_for_type(model::FeatureType type) {
         return "[PRT]";
     case model::FeatureType::SketchFeature:
         return "[SK]";
+    case model::FeatureType::Point:
+        return "[PT]";
+    case model::FeatureType::Line:
+        return "[LN]";
+    case model::FeatureType::Plane:
+        return "[PL]";
     case model::FeatureType::ExtrudeFeature:
         return "[EX]";
     case model::FeatureType::RevolveFeature:

@@ -17,6 +17,12 @@ const char* to_string(FeatureType type) {
         return "PartContainer";
     case FeatureType::SketchFeature:
         return "SketchFeature";
+    case FeatureType::Point:
+        return "Point";
+    case FeatureType::Line:
+        return "Line";
+    case FeatureType::Plane:
+        return "Plane";
     case FeatureType::ExtrudeFeature:
         return "ExtrudeFeature";
     case FeatureType::RevolveFeature:
@@ -41,6 +47,15 @@ FeatureType feature_type_from_string(const std::string& value) {
     }
     if (value == "SketchFeature") {
         return FeatureType::SketchFeature;
+    }
+    if (value == "Point") {
+        return FeatureType::Point;
+    }
+    if (value == "Line") {
+        return FeatureType::Line;
+    }
+    if (value == "Plane") {
+        return FeatureType::Plane;
     }
     if (value == "ExtrudeFeature") {
         return FeatureType::ExtrudeFeature;

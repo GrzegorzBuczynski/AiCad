@@ -75,6 +75,46 @@ void test_serializer_emits_required_fields() {
         }},
     };
 
+    nlohmann::ordered_json point_feature = nlohmann::ordered_json::object();
+    point_feature["id"] = 3U;
+    point_feature["expanded"] = true;
+    point_feature["root"] = false;
+    point_feature["type"] = "Point";
+    point_feature["name"] = "Point.001";
+    point_feature["state"] = "Valid";
+    point_feature["suppressed"] = false;
+    point_feature["dependencies"] = nlohmann::ordered_json::object();
+    point_feature["construction"] = false;
+    point_feature["pos"] = {-57.0, -79.0};
+
+    nlohmann::ordered_json line_feature = nlohmann::ordered_json::object();
+    line_feature["id"] = 4U;
+    line_feature["expanded"] = true;
+    line_feature["root"] = false;
+    line_feature["type"] = "Line";
+    line_feature["name"] = "Line.001";
+    line_feature["state"] = "Valid";
+    line_feature["suppressed"] = false;
+    line_feature["dependencies"] = nlohmann::ordered_json::object();
+    line_feature["construction"] = false;
+    line_feature["point_a"] = 3U;
+    line_feature["point_b"] = 5U;
+
+    nlohmann::ordered_json plane_feature = nlohmann::ordered_json::object();
+    plane_feature["id"] = 6U;
+    plane_feature["expanded"] = true;
+    plane_feature["root"] = false;
+    plane_feature["type"] = "Plane";
+    plane_feature["name"] = "Plane.001";
+    plane_feature["state"] = "Valid";
+    plane_feature["suppressed"] = false;
+    plane_feature["dependencies"] = nlohmann::ordered_json::object();
+    plane_feature["orginPoint"] = 3U;
+    plane_feature["vector"] = 5U;
+
+    options.extra_features = nlohmann::ordered_json::array({point_feature, line_feature, plane_feature});
+    options.feature_payloads[2] = {{"id", 4U}, {"plane", 6U}};
+
     const std::string serialized_text = io::ModelSerializer::to_string(source, options);
     const nlohmann::ordered_json serialized = nlohmann::ordered_json::parse(serialized_text);
 
@@ -101,7 +141,8 @@ void test_serializer_emits_required_fields() {
     assert(first_feature_keys.size() >= 8U);
     assert(first_feature_keys[0] == "id");
     assert(first_feature_keys[1] == "expanded");
-    assert(first_feature_keys[2] == "type");
+    assert(first_feature_keys[2] == "root");
+    assert(first_feature_keys[3] == "type");
 
     bool saw_expanded_flag = false;
     for (const auto& feature : features) {
@@ -109,6 +150,8 @@ void test_serializer_emits_required_fields() {
         assert(feature.contains("type"));
         assert(feature.contains("name"));
         assert(feature.contains("dependencies"));
+        assert(feature.at("dependencies").is_object());
+        assert(feature.contains("root"));
         assert(feature.contains("expanded"));
         if (feature.contains("expanded") && feature.at("expanded").is_boolean()) {
             saw_expanded_flag = true;
@@ -204,9 +247,56 @@ void test_serializer_sketch_payload_contains_lines() {
 
     io::ModelSerializerOptions options{};
     options.pretty_print = true;
-    options.feature_payloads[2] = {
-        {"sketch", sketch_payload},
-    };
+    options.feature_payloads[2] = {{"id", line_id}, {"plane", line_id + 3U}};
+    options.extra_features = nlohmann::ordered_json::array();
+
+    for (const auto& entity : sketch_payload.at("entities")) {
+        if (!entity.is_object() || !entity.contains("type") || !entity["type"].is_string()) {
+            continue;
+        }
+
+        if (entity["type"].get<std::string>() == "Point") {
+            nlohmann::ordered_json point_feature = nlohmann::ordered_json::object();
+            point_feature["id"] = entity["id"];
+            point_feature["expanded"] = true;
+            point_feature["root"] = false;
+            point_feature["type"] = "Point";
+            point_feature["name"] = "Point." + std::to_string(entity["id"].get<uint32_t>());
+            point_feature["state"] = "Valid";
+            point_feature["suppressed"] = false;
+            point_feature["dependencies"] = nlohmann::ordered_json::object();
+            point_feature["construction"] = entity.value("construction", false);
+            point_feature["pos"] = entity.at("pos");
+            options.extra_features.push_back(std::move(point_feature));
+        } else if (entity["type"].get<std::string>() == "Line") {
+            nlohmann::ordered_json line_feature = nlohmann::ordered_json::object();
+            line_feature["id"] = entity["id"];
+            line_feature["expanded"] = true;
+            line_feature["root"] = false;
+            line_feature["type"] = "Line";
+            line_feature["name"] = "Line." + std::to_string(entity["id"].get<uint32_t>());
+            line_feature["state"] = "Valid";
+            line_feature["suppressed"] = false;
+            line_feature["dependencies"] = nlohmann::ordered_json::object();
+            line_feature["construction"] = entity.value("construction", false);
+            line_feature["point_a"] = entity.at("point_a");
+            line_feature["point_b"] = entity.at("point_b");
+            options.extra_features.push_back(std::move(line_feature));
+        }
+    }
+
+    nlohmann::ordered_json plane_feature = nlohmann::ordered_json::object();
+    plane_feature["id"] = line_id + 3U;
+    plane_feature["expanded"] = true;
+    plane_feature["root"] = false;
+    plane_feature["type"] = "Plane";
+    plane_feature["name"] = "Plane.001";
+    plane_feature["state"] = "Valid";
+    plane_feature["suppressed"] = false;
+    plane_feature["dependencies"] = nlohmann::ordered_json::object();
+    plane_feature["orginPoint"] = 1U;
+    plane_feature["vector"] = 2U;
+    options.extra_features.push_back(std::move(plane_feature));
 
     const nlohmann::ordered_json serialized = io::ModelSerializer::to_json(source, options);
     assert(serialized.contains("features"));
@@ -223,18 +313,49 @@ void test_serializer_sketch_payload_contains_lines() {
         }
 
         assert(feature.contains("payload"));
-        assert(feature["payload"].contains("sketch"));
-        assert(feature["payload"]["sketch"].contains("entities"));
-        assert(feature["payload"]["sketch"].at("entities").is_array());
-        assert(!feature["payload"]["sketch"].at("entities").empty());
-        assert(feature["payload"]["sketch"].at("entities").at(2).at("point_a") == 1U);
-        assert(feature["payload"]["sketch"].at("entities").at(2).at("point_b") == 2U);
+        assert(feature["payload"].is_object());
+        assert(feature["payload"].contains("id"));
+        assert(feature["payload"].at("id").is_number_unsigned());
+        assert(feature["payload"].at("id") == 3U);
+        assert(feature.contains("plane"));
+        assert(feature["plane"].is_number_unsigned());
+        assert(feature["plane"] == 6U);
+        assert(!feature["payload"].contains("entities"));
 
         found_sketch_payload = true;
         break;
     }
 
     assert(found_sketch_payload);
+
+    bool saw_point = false;
+    bool saw_line = false;
+    bool saw_plane = false;
+    for (const auto& feature : serialized["features"]) {
+        if (!feature.contains("type") || !feature["type"].is_string()) {
+            continue;
+        }
+
+        if (feature["type"].get<std::string>() == "Point") {
+            saw_point = true;
+            assert(feature.contains("pos"));
+            assert(feature.at("pos").is_array());
+        }
+        if (feature["type"].get<std::string>() == "Line") {
+            saw_line = true;
+            assert(feature.contains("point_a"));
+            assert(feature.contains("point_b"));
+        }
+        if (feature["type"].get<std::string>() == "Plane") {
+            saw_plane = true;
+            assert(feature.contains("orginPoint"));
+            assert(feature.contains("vector"));
+        }
+    }
+
+    assert(saw_point);
+    assert(saw_line);
+    assert(saw_plane);
 }
 
 void test_missing_required_field() {

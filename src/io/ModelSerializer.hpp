@@ -20,6 +20,7 @@ struct ModelSerializerOptions {
     nlohmann::ordered_json metadata = nlohmann::ordered_json::object();
     nlohmann::ordered_json session = nlohmann::ordered_json::object();
     std::unordered_map<uint32_t, nlohmann::ordered_json> feature_payloads{};
+    nlohmann::ordered_json extra_features = nlohmann::ordered_json::array();
 };
 
 /**

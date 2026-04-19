@@ -1,5 +1,6 @@
 #include "io/ModelSerializer.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -18,6 +19,12 @@ const char* to_string(model::FeatureType type) {
         return "PartContainer";
     case model::FeatureType::SketchFeature:
         return "SketchFeature";
+    case model::FeatureType::Point:
+        return "Point";
+    case model::FeatureType::Line:
+        return "Line";
+    case model::FeatureType::Plane:
+        return "Plane";
     case model::FeatureType::ExtrudeFeature:
         return "ExtrudeFeature";
     case model::FeatureType::RevolveFeature:
@@ -60,29 +67,61 @@ void collect_features(
         return;
     }
 
-    ordered_json dependencies = ordered_json::array();
-    if (feature->parent != nullptr) {
-        dependencies.push_back(feature->parent->id);
+    ordered_json dependencies = ordered_json::object();
+    if (!feature->children.empty()) {
+        dependencies["id"] = feature->children.front()->id;
     }
 
     ordered_json feature_json = ordered_json::object();
     feature_json["id"] = feature->id;
     feature_json["expanded"] = feature->expanded;
+    feature_json["root"] = feature->parent == nullptr;
     feature_json["type"] = to_string(feature->type);
     feature_json["name"] = feature->name;
     feature_json["state"] = to_string(feature->state);
     feature_json["suppressed"] = feature->suppressed;
-    feature_json["parent_id"] = feature->parent != nullptr ? ordered_json(feature->parent->id) : ordered_json(nullptr);
     feature_json["dependencies"] = dependencies;
+
+    if (const auto* point = std::get_if<model::PointObject>(&feature->object_data)) {
+        feature_json["construction"] = point->construction;
+        feature_json["pos"] = {point->x, point->y};
+    } else if (const auto* line = std::get_if<model::LineObject>(&feature->object_data)) {
+        feature_json["construction"] = line->construction;
+        feature_json["point_a"] = line->point_a;
+        feature_json["point_b"] = line->point_b;
+    } else if (const auto* plane = std::get_if<model::PlaneObject>(&feature->object_data)) {
+        feature_json["orginPoint"] = plane->origin_point;
+        feature_json["vector"] = plane->vector_ref;
+    }
 
     const auto payload_it = options.feature_payloads.find(feature->id);
     if (payload_it != options.feature_payloads.end()) {
-        feature_json["payload"] = payload_it->second;
-        if (feature->type == model::FeatureType::ExtrudeFeature && payload_it->second.contains("profile_id")) {
-            feature_json["profile_id"] = payload_it->second["profile_id"];
+        if (feature->type == model::FeatureType::SketchFeature) {
+            if (payload_it->second.contains("id") && payload_it->second["id"].is_number_unsigned()) {
+                feature_json["payload"] = ordered_json::object();
+                feature_json["payload"]["id"] = payload_it->second["id"];
+            }
+            if (payload_it->second.contains("plane") && payload_it->second["plane"].is_number_unsigned()) {
+                feature_json["plane"] = payload_it->second["plane"];
+            }
+        } else {
+            feature_json["payload"] = payload_it->second;
+        }
+
+        if (feature->type == model::FeatureType::ExtrudeFeature) {
+            if (payload_it->second.contains("sketch_id") && payload_it->second["sketch_id"].is_number_unsigned()) {
+                feature_json["sketch_id"] = payload_it->second["sketch_id"];
+            } else if (payload_it->second.contains("profile_id") && payload_it->second["profile_id"].is_number_unsigned()) {
+                feature_json["sketch_id"] = payload_it->second["profile_id"];
+            }
+        }
+
+        if (feature->type == model::FeatureType::FilletFeature &&
+            payload_it->second.contains("feature_id") && payload_it->second["feature_id"].is_number_unsigned()) {
+            feature_json["feature_id"] = payload_it->second["feature_id"];
         }
     } else if (feature->type == model::FeatureType::ExtrudeFeature && feature->parent != nullptr) {
-        feature_json["profile_id"] = feature->parent->id;
+        feature_json["sketch_id"] = feature->parent->id;
     }
 
     output.push_back(std::move(feature_json));
@@ -97,6 +136,20 @@ void collect_features(
 nlohmann::ordered_json ModelSerializer::to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options) {
     std::vector<ordered_json> features{};
     collect_features(tree.root(), options, features);
+
+    if (options.extra_features.is_array()) {
+        for (const auto& feature : options.extra_features) {
+            if (feature.is_object()) {
+                features.push_back(feature);
+            }
+        }
+    }
+
+    std::sort(features.begin(), features.end(), [](const ordered_json& lhs, const ordered_json& rhs) {
+        const uint32_t lhs_id = lhs.contains("id") && lhs.at("id").is_number_unsigned() ? lhs.at("id").get<uint32_t>() : 0U;
+        const uint32_t rhs_id = rhs.contains("id") && rhs.at("id").is_number_unsigned() ? rhs.at("id").get<uint32_t>() : 0U;
+        return lhs_id < rhs_id;
+    });
 
     ordered_json metadata = options.metadata;
     if (!metadata.is_object()) {

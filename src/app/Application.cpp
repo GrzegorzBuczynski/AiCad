@@ -1,9 +1,13 @@
 #include "app/Application.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -31,6 +35,81 @@ std::filesystem::path project_root_settings_path() {
 #else
     return std::filesystem::path("settings.json");
 #endif
+}
+
+std::optional<uint32_t> first_line_entity_id(const sketch::SketchDocument& sketch_document) {
+    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
+        if (std::holds_alternative<sketch::LineEntity>(entity.data)) {
+            return entity.id;
+        }
+    }
+    return std::nullopt;
+}
+
+nlohmann::ordered_json geometry_feature_from_entity(const sketch::SketchEntity& entity) {
+    nlohmann::ordered_json feature = nlohmann::ordered_json::object();
+    feature["id"] = entity.id;
+    feature["expanded"] = true;
+    feature["root"] = false;
+    feature["name"] = std::holds_alternative<sketch::PointEntity>(entity.data) ? "Point." + std::to_string(entity.id) : "Line." + std::to_string(entity.id);
+    feature["state"] = "Valid";
+    feature["suppressed"] = false;
+    feature["dependencies"] = nlohmann::ordered_json::object();
+
+    if (const auto* point = std::get_if<sketch::PointEntity>(&entity.data)) {
+        feature["type"] = "Point";
+        feature["construction"] = entity.construction;
+        feature["pos"] = {point->pos.x, point->pos.y};
+    } else if (const auto* line = std::get_if<sketch::LineEntity>(&entity.data)) {
+        feature["type"] = "Line";
+        feature["construction"] = entity.construction;
+        feature["point_a"] = line->point_a;
+        feature["point_b"] = line->point_b;
+    }
+
+    return feature;
+}
+
+nlohmann::ordered_json sketch_geometry_features(const sketch::SketchDocument& sketch_document) {
+    nlohmann::ordered_json features = nlohmann::ordered_json::array();
+    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
+        if (std::holds_alternative<sketch::PointEntity>(entity.data) || std::holds_alternative<sketch::LineEntity>(entity.data)) {
+            features.push_back(geometry_feature_from_entity(entity));
+        }
+    }
+
+    std::optional<uint32_t> first_point_id{};
+    std::optional<uint32_t> second_point_id{};
+    uint32_t max_entity_id = 0U;
+    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
+        max_entity_id = std::max(max_entity_id, entity.id);
+        if (!std::holds_alternative<sketch::PointEntity>(entity.data)) {
+            continue;
+        }
+
+        if (!first_point_id.has_value()) {
+            first_point_id = entity.id;
+        } else if (!second_point_id.has_value()) {
+            second_point_id = entity.id;
+        }
+    }
+
+    if (first_point_id.has_value() && second_point_id.has_value()) {
+        nlohmann::ordered_json plane_feature = nlohmann::ordered_json::object();
+        plane_feature["id"] = max_entity_id + 1U;
+        plane_feature["expanded"] = true;
+        plane_feature["root"] = false;
+        plane_feature["type"] = "Plane";
+        plane_feature["name"] = "Plane.001";
+        plane_feature["state"] = "Valid";
+        plane_feature["suppressed"] = false;
+        plane_feature["dependencies"] = nlohmann::ordered_json::object();
+        plane_feature["orginPoint"] = *first_point_id;
+        plane_feature["vector"] = *second_point_id;
+        features.push_back(std::move(plane_feature));
+    }
+
+    return features;
 }
 
 std::optional<std::string> open_file_picker(const char* title, const std::string& initial_dir) {
@@ -859,6 +938,15 @@ void Application::draw_menu_bar() {
         options.metadata["source"] = "File->Save As";
         options.session = nlohmann::json::object();
         options.session["camera"] = camera_.to_json();
+        options.extra_features = sketch_geometry_features(sketch_document_);
+
+        uint32_t sketch_plane_feature_id = 0U;
+        for (const sketch::SketchEntity& entity : sketch_document_.entities()) {
+            sketch_plane_feature_id = std::max(sketch_plane_feature_id, entity.id);
+        }
+        if (sketch_plane_feature_id != 0U) {
+            ++sketch_plane_feature_id;
+        }
 
         if (const model::FeatureNode* root = feature_tree_.root()) {
             std::vector<const model::FeatureNode*> stack{root};
@@ -867,9 +955,12 @@ void Application::draw_menu_bar() {
                 stack.pop_back();
 
                 if (node->type == model::FeatureType::SketchFeature) {
-                    options.feature_payloads[node->id] = {
-                        {"sketch", sketch_document_.to_json_payload()},
-                    };
+                    if (const std::optional<uint32_t> line_id = first_line_entity_id(sketch_document_); line_id.has_value()) {
+                        options.feature_payloads[node->id] = {{"id", *line_id}};
+                        if (sketch_plane_feature_id != 0U) {
+                            options.feature_payloads[node->id]["plane"] = sketch_plane_feature_id;
+                        }
+                    }
                     break;
                 }
 
@@ -902,6 +993,17 @@ void Application::draw_menu_bar() {
                     file.read(data.data(), static_cast<std::streamsize>(data.size()));
                     const nlohmann::json root = nlohmann::json::parse(data, nullptr, false);
                     if (!root.is_discarded() && root.is_object() && root.contains("features") && root["features"].is_array()) {
+                        std::unordered_map<uint32_t, const nlohmann::json*> feature_by_id{};
+                        for (const auto& feature : root["features"]) {
+                            if (!feature.is_object()) {
+                                continue;
+                            }
+                            if (!feature.contains("id") || !feature["id"].is_number_unsigned()) {
+                                continue;
+                            }
+                            feature_by_id[feature["id"].get<uint32_t>()] = &feature;
+                        }
+
                         for (const auto& feature : root["features"]) {
                             if (!feature.is_object()) {
                                 continue;
@@ -912,10 +1014,111 @@ void Application::draw_menu_bar() {
                             }
 
                             if (feature.contains("payload") && feature["payload"].is_object() &&
-                                feature["payload"].contains("sketch") && feature["payload"]["sketch"].is_object()) {
-                                std::string sketch_error{};
-                                if (!sketch_document_.apply_json_payload(feature["payload"]["sketch"], &sketch_error)) {
-                                    last_error_ = sketch_error;
+                                feature["payload"].contains("id") && feature["payload"]["id"].is_number_unsigned()) {
+                                const uint32_t start_line_id = feature["payload"]["id"].get<uint32_t>();
+
+                                nlohmann::ordered_json entities = nlohmann::ordered_json::array();
+                                std::unordered_set<uint32_t> emitted_points{};
+                                std::unordered_set<uint32_t> visited_lines{};
+
+                                uint32_t current_line_id = start_line_id;
+                                while (current_line_id != 0U && !visited_lines.contains(current_line_id)) {
+                                    visited_lines.insert(current_line_id);
+
+                                    const auto line_it = feature_by_id.find(current_line_id);
+                                    if (line_it == feature_by_id.end() || line_it->second == nullptr) {
+                                        break;
+                                    }
+
+                                    const nlohmann::json& line_feature = *line_it->second;
+                                    if (!line_feature.contains("type") || !line_feature["type"].is_string() ||
+                                        line_feature["type"].get<std::string>() != "Line") {
+                                        break;
+                                    }
+
+                                    if (!line_feature.contains("point_a") || !line_feature["point_a"].is_number_unsigned() ||
+                                        !line_feature.contains("point_b") || !line_feature["point_b"].is_number_unsigned()) {
+                                        break;
+                                    }
+
+                                    const uint32_t point_a = line_feature["point_a"].get<uint32_t>();
+                                    const uint32_t point_b = line_feature["point_b"].get<uint32_t>();
+
+                                    const auto emit_point = [&](uint32_t point_id) {
+                                        if (emitted_points.contains(point_id)) {
+                                            return;
+                                        }
+
+                                        const auto point_it = feature_by_id.find(point_id);
+                                        if (point_it == feature_by_id.end() || point_it->second == nullptr) {
+                                            return;
+                                        }
+
+                                        const nlohmann::json& point_feature = *point_it->second;
+                                        if (!point_feature.contains("type") || !point_feature["type"].is_string() ||
+                                            point_feature["type"].get<std::string>() != "Point") {
+                                            return;
+                                        }
+                                        if (!point_feature.contains("pos") || !point_feature["pos"].is_array() || point_feature["pos"].size() != 2U ||
+                                            !point_feature["pos"][0].is_number() || !point_feature["pos"][1].is_number()) {
+                                            return;
+                                        }
+
+                                        nlohmann::ordered_json item = nlohmann::ordered_json::object();
+                                        item["id"] = point_id;
+                                        item["construction"] = point_feature.value("construction", false);
+                                        item["type"] = "Point";
+                                        item["pos"] = {point_feature["pos"][0].get<double>(), point_feature["pos"][1].get<double>()};
+                                        entities.push_back(std::move(item));
+                                        emitted_points.insert(point_id);
+                                    };
+
+                                    emit_point(point_a);
+                                    emit_point(point_b);
+
+                                    nlohmann::ordered_json line_item = nlohmann::ordered_json::object();
+                                    line_item["id"] = current_line_id;
+                                    line_item["construction"] = line_feature.value("construction", false);
+                                    line_item["type"] = "Line";
+                                    line_item["point_a"] = point_a;
+                                    line_item["point_b"] = point_b;
+                                    entities.push_back(std::move(line_item));
+
+                                    uint32_t next_line_id = 0U;
+                                    if (line_feature.contains("dependencies") && line_feature["dependencies"].is_object() &&
+                                        line_feature["dependencies"].contains("id") && line_feature["dependencies"]["id"].is_number_unsigned()) {
+                                        const uint32_t candidate = line_feature["dependencies"]["id"].get<uint32_t>();
+                                        const auto next_it = feature_by_id.find(candidate);
+                                        if (next_it != feature_by_id.end() && next_it->second != nullptr &&
+                                            (*next_it->second).contains("type") && (*next_it->second)["type"].is_string() &&
+                                            (*next_it->second)["type"].get<std::string>() == "Line") {
+                                            next_line_id = candidate;
+                                        }
+                                    }
+
+                                    current_line_id = next_line_id;
+                                }
+
+                                if (!entities.empty()) {
+                                    std::vector<nlohmann::ordered_json> sorted_entities{};
+                                    sorted_entities.reserve(entities.size());
+                                    for (auto& entity : entities) {
+                                        sorted_entities.push_back(std::move(entity));
+                                    }
+                                    std::sort(sorted_entities.begin(), sorted_entities.end(), [](const auto& a, const auto& b) {
+                                        return a["id"].template get<uint32_t>() < b["id"].template get<uint32_t>();
+                                    });
+
+                                    nlohmann::ordered_json sketch_payload = nlohmann::ordered_json::object();
+                                    sketch_payload["entities"] = nlohmann::ordered_json::array();
+                                    for (auto& entity : sorted_entities) {
+                                        sketch_payload["entities"].push_back(std::move(entity));
+                                    }
+
+                                    std::string sketch_error{};
+                                    if (!sketch_document_.apply_json_payload(sketch_payload, &sketch_error)) {
+                                        last_error_ = sketch_error;
+                                    }
                                 }
                             }
                             break;

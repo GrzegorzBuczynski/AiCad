@@ -22,11 +22,12 @@
       "name": "Sketch.001",
       "state": "Valid",
       "suppressed": false,
-      "plane": 6,
+      "dependencies": {"id": 3},
       "payload": 
       {
         "id": 3         
-      }
+      },
+      "plane": 6
     },
         {
       "id": 3,
