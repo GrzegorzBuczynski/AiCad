@@ -21,8 +21,15 @@ struct ParsedFeature {
     bool root = false;
     bool suppressed = false;
     bool expanded = true;
+
     std::optional<uint32_t> chain_child_id{};
     nlohmann::json dependencies = nlohmann::json::array();
+
+    std::optional<uint32_t> sketch_line_id{};
+    std::optional<uint32_t> sketch_plane_id{};
+    std::optional<uint32_t> sketch_id{};
+    std::optional<uint32_t> feature_ref_id{};
+
     model::FeatureObjectData object_data{};
 };
 
@@ -164,6 +171,39 @@ std::expected<nlohmann::json, ModelError> resolve_parameter_impl(
     return resolved;
 }
 
+std::vector<uint32_t> collect_referenced_children(const ParsedFeature& feature) {
+    std::vector<uint32_t> child_ids{};
+
+    const auto add_opt = [&](const std::optional<uint32_t>& value) {
+        if (value.has_value()) {
+            child_ids.push_back(*value);
+        }
+    };
+
+    add_opt(feature.sketch_line_id);
+    add_opt(feature.sketch_plane_id);
+    add_opt(feature.sketch_id);
+    add_opt(feature.feature_ref_id);
+
+    if (const auto* line = std::get_if<model::LineObject>(&feature.object_data)) {
+        child_ids.push_back(line->point_a);
+        child_ids.push_back(line->point_b);
+    }
+
+    if (const auto* plane = std::get_if<model::PlaneObject>(&feature.object_data)) {
+        child_ids.push_back(plane->origin_point);
+        child_ids.push_back(plane->vector_ref);
+    }
+
+    for (const auto& dep : feature.dependencies) {
+        if (dep.is_number_unsigned()) {
+            child_ids.push_back(dep.get<uint32_t>());
+        }
+    }
+
+    return child_ids;
+}
+
 }  // namespace
 
 std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(const std::string& json_text) {
@@ -195,6 +235,8 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
     parsed_features.reserve(root.at("features").size());
 
     std::vector<FeatureIssue> issues{};
+    std::unordered_set<uint32_t> seen_ids{};
+
     for (const auto& item : root.at("features")) {
         if (!item.is_object()) {
             continue;
@@ -207,6 +249,11 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
             continue;
         }
         parsed.source_id = item.at("id").get<uint32_t>();
+
+        if (!seen_ids.insert(parsed.source_id).second) {
+            issues.push_back({parsed.source_id, "", "Duplicate feature id"});
+            continue;
+        }
 
         if (!item.contains("name") || !item.at("name").is_string()) {
             issues.push_back({parsed.source_id, "", "Feature missing name"});
@@ -241,6 +288,26 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
                        item.at("dependencies").contains("id") &&
                        item.at("dependencies").at("id").is_number_unsigned()) {
                 parsed.chain_child_id = item.at("dependencies").at("id").get<uint32_t>();
+            }
+        }
+
+        if (parsed.type == "SketchFeature") {
+            if (item.contains("payload") && item.at("payload").is_object() &&
+                item.at("payload").contains("id") && item.at("payload").at("id").is_number_unsigned()) {
+                parsed.sketch_line_id = item.at("payload").at("id").get<uint32_t>();
+            }
+            if (item.contains("plane") && item.at("plane").is_number_unsigned()) {
+                parsed.sketch_plane_id = item.at("plane").get<uint32_t>();
+            }
+        } else if (parsed.type == "ExtrudeFeature") {
+            if (item.contains("sketch_id") && item.at("sketch_id").is_number_unsigned()) {
+                parsed.sketch_id = item.at("sketch_id").get<uint32_t>();
+            } else if (item.contains("profile_id") && item.at("profile_id").is_number_unsigned()) {
+                parsed.sketch_id = item.at("profile_id").get<uint32_t>();
+            }
+        } else if (parsed.type == "FilletFeature") {
+            if (item.contains("feature_id") && item.at("feature_id").is_number_unsigned()) {
+                parsed.feature_ref_id = item.at("feature_id").get<uint32_t>();
             }
         }
 
@@ -289,110 +356,64 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
         parsed_features.push_back(std::move(parsed));
     }
 
-    std::unordered_map<uint32_t, uint32_t> source_id_to_index{};
-    source_id_to_index.reserve(parsed_features.size());
-    for (uint32_t i = 0U; i < static_cast<uint32_t>(parsed_features.size()); ++i) {
-        source_id_to_index[parsed_features[i].source_id] = i;
-    }
-
-    for (ParsedFeature& feature : parsed_features) {
-        if (!feature.chain_child_id.has_value()) {
-            continue;
-        }
-
-        const auto child_it = source_id_to_index.find(*feature.chain_child_id);
-        if (child_it == source_id_to_index.end()) {
-            issues.push_back({feature.source_id, feature.name, "dependencies.id references missing feature"});
-            continue;
-        }
-
-        ParsedFeature& child = parsed_features[child_it->second];
-        if (!child.has_parent) {
-            child.parent_id = feature.source_id;
-            child.has_parent = true;
-        }
-    }
-
     model::FeatureTree tree{};
     model::FeatureNode* model_root = tree.root();
     if (model_root == nullptr) {
         return std::unexpected(ModelError{ModelErrorCode::InvalidFormat, "Internal tree root not initialized", issues});
     }
 
+    std::unordered_map<uint32_t, size_t> source_id_to_index{};
+    source_id_to_index.reserve(parsed_features.size());
+    for (size_t i = 0; i < parsed_features.size(); ++i) {
+        source_id_to_index[parsed_features[i].source_id] = i;
+    }
+
+    std::unordered_map<uint32_t, std::vector<uint32_t>> children_by_parent{};
+    for (const ParsedFeature& feature : parsed_features) {
+        if (feature.has_parent) {
+            children_by_parent[feature.parent_id].push_back(feature.source_id);
+        }
+    }
+
     std::unordered_map<uint32_t, uint32_t> source_to_runtime{};
     source_to_runtime[model_root->id] = model_root->id;
 
-    for (ParsedFeature& feature : parsed_features) {
-        if (feature.type != "PartContainer") {
-            continue;
+    std::unordered_set<uint32_t> visiting{};
+    std::unordered_set<uint32_t> visited{};
+
+    const auto attach_feature = [&](auto&& self, uint32_t source_id, uint32_t runtime_parent_id) -> bool {
+        if (visited.contains(source_id)) {
+            return true;
         }
-        if (!(feature.root || !feature.has_parent)) {
-            continue;
+
+        if (visiting.contains(source_id)) {
+            issues.push_back({source_id, "", "Cycle detected in feature graph"});
+            return false;
         }
 
-        model_root->name = feature.name;
-        model_root->expanded = feature.expanded;
-        model_root->suppressed = feature.suppressed;
-        source_to_runtime[feature.source_id] = model_root->id;
-        break;
-    }
+        const auto idx_it = source_id_to_index.find(source_id);
+        if (idx_it == source_id_to_index.end()) {
+            return false;
+        }
 
-    std::unordered_set<uint32_t> pending{};
-    for (size_t i = 0; i < parsed_features.size(); ++i) {
-        pending.insert(static_cast<uint32_t>(i));
-    }
+        visiting.insert(source_id);
+        ParsedFeature& feature = parsed_features[idx_it->second];
 
-    bool made_progress = true;
-    while (!pending.empty() && made_progress) {
-        made_progress = false;
-
-        std::vector<uint32_t> to_remove{};
-        for (const uint32_t idx : pending) {
-            ParsedFeature& feature = parsed_features[idx];
-
-            if (feature.type == "PartContainer" && source_to_runtime.contains(feature.source_id)) {
-                to_remove.push_back(idx);
-                made_progress = true;
-                continue;
-            }
-
-            uint32_t runtime_parent_id = model_root->id;
-            if (feature.has_parent) {
-                const auto parent_it = source_to_runtime.find(feature.parent_id);
-                if (parent_it == source_to_runtime.end()) {
-                    continue;
-                }
-                runtime_parent_id = parent_it->second;
-            }
-
-            bool dependencies_ok = true;
-            for (const auto& dep : feature.dependencies) {
-                if (!dep.is_number_unsigned()) {
-                    issues.push_back({feature.source_id, feature.name, "Invalid dependency id type"});
-                    dependencies_ok = false;
-                    continue;
-                }
-
-                const uint32_t dep_id = dep.get<uint32_t>();
-                if (!source_to_runtime.contains(dep_id) && dep_id != feature.parent_id) {
-                    dependencies_ok = false;
-                }
-            }
-
-            if (!dependencies_ok) {
-                continue;
-            }
-
+        if (feature.type == "PartContainer") {
+            model_root->name = feature.name;
+            model_root->expanded = feature.expanded;
+            model_root->suppressed = feature.suppressed;
+            source_to_runtime[feature.source_id] = model_root->id;
+        } else {
             bool valid_type = false;
             const model::FeatureType type = type_from_string(feature.type, &valid_type);
 
             model::FeatureTreeError create_error = model::FeatureTreeError::Ok;
-            uint32_t created_id = tree.create_feature(type, feature.name, runtime_parent_id, &create_error);
+            const uint32_t created_id = tree.create_feature(type, feature.name, runtime_parent_id, &create_error);
             if (created_id == 0U || create_error != model::FeatureTreeError::Ok) {
                 issues.push_back({feature.source_id, feature.name, "Could not create feature in tree"});
-                to_remove.push_back(idx);
-                made_progress = true;
-                continue;
+                visiting.erase(source_id);
+                return false;
             }
 
             source_to_runtime[feature.source_id] = created_id;
@@ -411,27 +432,64 @@ std::expected<model::FeatureTree, ModelError> ModelDeserializer::from_string(con
                 issues.push_back({feature.source_id, feature.name, "Unknown feature type: " + feature.type});
                 (void)tree.set_feature_state(created_id, model::FeatureState::Error);
             }
-
-            to_remove.push_back(idx);
-            made_progress = true;
         }
 
-        for (const uint32_t idx : to_remove) {
-            pending.erase(idx);
+        const uint32_t runtime_current_id = source_to_runtime[feature.source_id];
+
+        if (feature.chain_child_id.has_value()) {
+            const uint32_t chain_id = *feature.chain_child_id;
+            if (source_id_to_index.contains(chain_id)) {
+                // dependencies.id is treated as linked-list continuation at the same tree level.
+                (void)self(self, chain_id, runtime_parent_id);
+            } else {
+                issues.push_back({feature.source_id, feature.name, "Referenced feature id missing: " + std::to_string(chain_id)});
+            }
+        }
+
+        std::vector<uint32_t> child_ids = collect_referenced_children(feature);
+        if (const auto rel_it = children_by_parent.find(feature.source_id); rel_it != children_by_parent.end()) {
+            child_ids.insert(child_ids.end(), rel_it->second.begin(), rel_it->second.end());
+        }
+
+        std::unordered_set<uint32_t> seen_child_ids{};
+        for (const uint32_t child_id : child_ids) {
+            if (child_id == 0U || !seen_child_ids.insert(child_id).second) {
+                continue;
+            }
+
+            if (!source_id_to_index.contains(child_id)) {
+                issues.push_back({feature.source_id, feature.name, "Referenced feature id missing: " + std::to_string(child_id)});
+                continue;
+            }
+
+            (void)self(self, child_id, runtime_current_id);
+        }
+
+        visiting.erase(source_id);
+        visited.insert(source_id);
+        return true;
+    };
+
+    bool have_starting_root = false;
+    for (const ParsedFeature& feature : parsed_features) {
+        if (feature.root || feature.type == "PartContainer") {
+            have_starting_root = true;
+            (void)attach_feature(attach_feature, feature.source_id, model_root->id);
         }
     }
 
-    if (!pending.empty()) {
-        for (const uint32_t idx : pending) {
-            const ParsedFeature& feature = parsed_features[idx];
-            issues.push_back({feature.source_id, feature.name, "Broken feature dependency graph"});
-        }
-
+    if (!have_starting_root) {
         return std::unexpected(ModelError{
             ModelErrorCode::DependencyGraphError,
-            "Broken feature dependency graph",
+            "No root feature found",
             issues,
         });
+    }
+
+    for (const ParsedFeature& feature : parsed_features) {
+        if (!visited.contains(feature.source_id) && !feature.root && feature.type != "PartContainer") {
+            issues.push_back({feature.source_id, feature.name, "Unreachable feature ignored"});
+        }
     }
 
     return tree;

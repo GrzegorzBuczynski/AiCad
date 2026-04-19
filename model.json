@@ -1,0 +1,217 @@
+{
+  "schema_version": "1.0",
+  "name": "VulcanCAD Model",
+  "units": "mm",
+  "parameters": {},
+  "features": [
+    {
+      "id": 1,
+      "expanded": true,
+      "root": true,
+      "type": "PartContainer",
+      "name": "Part.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 2
+      }
+    },
+    {
+      "id": 2,
+      "expanded": true,
+      "root": false,
+      "type": "SketchFeature",
+      "name": "Sketch.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 6
+      },
+      "payload": {
+        "id": 12
+      },
+      "plane": 13
+    },
+    {
+      "id": 3,
+      "expanded": true,
+      "root": false,
+      "type": "ExtrudeFeature",
+      "name": "Pad.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 4
+      },
+      "sketch_id": 2
+    },
+    {
+      "id": 4,
+      "expanded": true,
+      "root": false,
+      "type": "FilletFeature",
+      "name": "Fillet.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 5
+      }
+    },
+    {
+      "id": 5,
+      "expanded": true,
+      "root": false,
+      "type": "ShellFeature",
+      "name": "Shell.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {}
+    },
+    {
+      "id": 6,
+      "expanded": true,
+      "root": false,
+      "type": "Line",
+      "name": "Line.8",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 7
+      },
+      "construction": false,
+      "point_a": 6,
+      "point_b": 7
+    },
+    {
+      "id": 7,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.6",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 8
+      },
+      "construction": false,
+      "pos": [
+        -193.0,
+        80.0
+      ]
+    },
+    {
+      "id": 8,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.7",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 9
+      },
+      "construction": false,
+      "pos": [
+        225.0,
+        -54.0
+      ]
+    },
+    {
+      "id": 9,
+      "expanded": true,
+      "root": false,
+      "type": "Plane",
+      "name": "Plane.9",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 3
+      },
+      "orginPoint": 6,
+      "vector": 7
+    },
+    {
+      "id": 10,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.10",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "pos": [
+        -193.0,
+        80.0
+      ]
+    },
+    {
+      "id": 11,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.11",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "pos": [
+        225.0,
+        -54.0
+      ]
+    },
+    {
+      "id": 12,
+      "expanded": true,
+      "root": false,
+      "type": "Line",
+      "name": "Line.12",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "point_a": 10,
+      "point_b": 11
+    },
+    {
+      "id": 13,
+      "expanded": true,
+      "root": false,
+      "type": "Plane",
+      "name": "Plane.13",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "orginPoint": 10,
+      "vector": 11
+    }
+  ],
+  "metadata": {
+    "source": "File->Save As",
+    "generator": "VulcanCAD"
+  },
+  "session": {
+    "camera": {
+      "far_plane": 1000.0,
+      "fov": 60.0,
+      "near_plane": 0.10000000149011612,
+      "ortho_scale": 1.0,
+      "position": [
+        4.153860569000244,
+        7.125023365020752,
+        -6.322934627532959
+      ],
+      "projection_mode": "perspective",
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  }
+}

@@ -37,79 +37,115 @@ std::filesystem::path project_root_settings_path() {
 #endif
 }
 
-std::optional<uint32_t> first_line_entity_id(const sketch::SketchDocument& sketch_document) {
-    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
-        if (std::holds_alternative<sketch::LineEntity>(entity.data)) {
-            return entity.id;
+uint32_t max_feature_id_in_tree(const model::FeatureTree& tree) {
+    uint32_t max_id = 0U;
+    if (const model::FeatureNode* root = tree.root()) {
+        std::vector<const model::FeatureNode*> stack{root};
+        while (!stack.empty()) {
+            const model::FeatureNode* node = stack.back();
+            stack.pop_back();
+            max_id = std::max(max_id, node->id);
+            for (const model::FeatureNode* child : node->children) {
+                stack.push_back(child);
+            }
         }
     }
-    return std::nullopt;
+    return max_id;
 }
 
-nlohmann::ordered_json geometry_feature_from_entity(const sketch::SketchEntity& entity) {
-    nlohmann::ordered_json feature = nlohmann::ordered_json::object();
-    feature["id"] = entity.id;
-    feature["expanded"] = true;
-    feature["root"] = false;
-    feature["name"] = std::holds_alternative<sketch::PointEntity>(entity.data) ? "Point." + std::to_string(entity.id) : "Line." + std::to_string(entity.id);
-    feature["state"] = "Valid";
-    feature["suppressed"] = false;
-    feature["dependencies"] = nlohmann::ordered_json::object();
+struct GeometryExportBundle {
+    nlohmann::ordered_json extra_features = nlohmann::ordered_json::array();
+    std::optional<uint32_t> line_feature_id{};
+    std::optional<uint32_t> plane_feature_id{};
+};
 
-    if (const auto* point = std::get_if<sketch::PointEntity>(&entity.data)) {
-        feature["type"] = "Point";
-        feature["construction"] = entity.construction;
-        feature["pos"] = {point->pos.x, point->pos.y};
-    } else if (const auto* line = std::get_if<sketch::LineEntity>(&entity.data)) {
-        feature["type"] = "Line";
-        feature["construction"] = entity.construction;
-        feature["point_a"] = line->point_a;
-        feature["point_b"] = line->point_b;
-    }
+GeometryExportBundle build_geometry_export_bundle(const sketch::SketchDocument& sketch_document, uint32_t start_id) {
+    GeometryExportBundle bundle{};
+    uint32_t next_id = start_id;
 
-    return feature;
-}
+    std::unordered_map<uint32_t, uint32_t> point_feature_ids{};
+    std::optional<uint32_t> first_point_feature_id{};
+    std::optional<uint32_t> second_point_feature_id{};
 
-nlohmann::ordered_json sketch_geometry_features(const sketch::SketchDocument& sketch_document) {
-    nlohmann::ordered_json features = nlohmann::ordered_json::array();
     for (const sketch::SketchEntity& entity : sketch_document.entities()) {
-        if (std::holds_alternative<sketch::PointEntity>(entity.data) || std::holds_alternative<sketch::LineEntity>(entity.data)) {
-            features.push_back(geometry_feature_from_entity(entity));
-        }
-    }
-
-    std::optional<uint32_t> first_point_id{};
-    std::optional<uint32_t> second_point_id{};
-    uint32_t max_entity_id = 0U;
-    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
-        max_entity_id = std::max(max_entity_id, entity.id);
-        if (!std::holds_alternative<sketch::PointEntity>(entity.data)) {
+        const auto* point = std::get_if<sketch::PointEntity>(&entity.data);
+        if (point == nullptr) {
             continue;
         }
 
-        if (!first_point_id.has_value()) {
-            first_point_id = entity.id;
-        } else if (!second_point_id.has_value()) {
-            second_point_id = entity.id;
+        const uint32_t feature_id = next_id++;
+        point_feature_ids[entity.id] = feature_id;
+        if (!first_point_feature_id.has_value()) {
+            first_point_feature_id = feature_id;
+        } else if (!second_point_feature_id.has_value()) {
+            second_point_feature_id = feature_id;
         }
+
+        nlohmann::ordered_json feature = nlohmann::ordered_json::object();
+        feature["id"] = feature_id;
+        feature["expanded"] = true;
+        feature["root"] = false;
+        feature["type"] = "Point";
+        feature["name"] = "Point." + std::to_string(feature_id);
+        feature["state"] = "Valid";
+        feature["suppressed"] = false;
+        feature["dependencies"] = nlohmann::ordered_json::object();
+        feature["construction"] = entity.construction;
+        feature["pos"] = {point->pos.x, point->pos.y};
+        bundle.extra_features.push_back(std::move(feature));
     }
 
-    if (first_point_id.has_value() && second_point_id.has_value()) {
+    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
+        const auto* line = std::get_if<sketch::LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        const auto point_a_it = point_feature_ids.find(line->point_a);
+        const auto point_b_it = point_feature_ids.find(line->point_b);
+        if (point_a_it == point_feature_ids.end() || point_b_it == point_feature_ids.end()) {
+            continue;
+        }
+
+        const uint32_t feature_id = next_id++;
+        if (!bundle.line_feature_id.has_value()) {
+            bundle.line_feature_id = feature_id;
+        }
+
+        nlohmann::ordered_json feature = nlohmann::ordered_json::object();
+        feature["id"] = feature_id;
+        feature["expanded"] = true;
+        feature["root"] = false;
+        feature["type"] = "Line";
+        feature["name"] = "Line." + std::to_string(feature_id);
+        feature["state"] = "Valid";
+        feature["suppressed"] = false;
+        feature["dependencies"] = nlohmann::ordered_json::object();
+        feature["construction"] = entity.construction;
+        feature["point_a"] = point_a_it->second;
+        feature["point_b"] = point_b_it->second;
+        bundle.extra_features.push_back(std::move(feature));
+    }
+
+    if (first_point_feature_id.has_value() && second_point_feature_id.has_value()) {
+        const uint32_t feature_id = next_id++;
+        bundle.plane_feature_id = feature_id;
+
         nlohmann::ordered_json plane_feature = nlohmann::ordered_json::object();
-        plane_feature["id"] = max_entity_id + 1U;
+        plane_feature["id"] = feature_id;
         plane_feature["expanded"] = true;
         plane_feature["root"] = false;
         plane_feature["type"] = "Plane";
-        plane_feature["name"] = "Plane.001";
+        plane_feature["name"] = "Plane." + std::to_string(feature_id);
         plane_feature["state"] = "Valid";
         plane_feature["suppressed"] = false;
         plane_feature["dependencies"] = nlohmann::ordered_json::object();
-        plane_feature["orginPoint"] = *first_point_id;
-        plane_feature["vector"] = *second_point_id;
-        features.push_back(std::move(plane_feature));
+        plane_feature["orginPoint"] = *first_point_feature_id;
+        plane_feature["vector"] = *second_point_feature_id;
+        bundle.extra_features.push_back(std::move(plane_feature));
     }
 
-    return features;
+    return bundle;
 }
 
 std::optional<std::string> open_file_picker(const char* title, const std::string& initial_dir) {
@@ -938,15 +974,8 @@ void Application::draw_menu_bar() {
         options.metadata["source"] = "File->Save As";
         options.session = nlohmann::json::object();
         options.session["camera"] = camera_.to_json();
-        options.extra_features = sketch_geometry_features(sketch_document_);
-
-        uint32_t sketch_plane_feature_id = 0U;
-        for (const sketch::SketchEntity& entity : sketch_document_.entities()) {
-            sketch_plane_feature_id = std::max(sketch_plane_feature_id, entity.id);
-        }
-        if (sketch_plane_feature_id != 0U) {
-            ++sketch_plane_feature_id;
-        }
+        const GeometryExportBundle geometry_bundle = build_geometry_export_bundle(sketch_document_, max_feature_id_in_tree(feature_tree_) + 1U);
+        options.extra_features = geometry_bundle.extra_features;
 
         if (const model::FeatureNode* root = feature_tree_.root()) {
             std::vector<const model::FeatureNode*> stack{root};
@@ -955,10 +984,10 @@ void Application::draw_menu_bar() {
                 stack.pop_back();
 
                 if (node->type == model::FeatureType::SketchFeature) {
-                    if (const std::optional<uint32_t> line_id = first_line_entity_id(sketch_document_); line_id.has_value()) {
-                        options.feature_payloads[node->id] = {{"id", *line_id}};
-                        if (sketch_plane_feature_id != 0U) {
-                            options.feature_payloads[node->id]["plane"] = sketch_plane_feature_id;
+                    if (geometry_bundle.line_feature_id.has_value()) {
+                        options.feature_payloads[node->id] = {{"id", *geometry_bundle.line_feature_id}};
+                        if (geometry_bundle.plane_feature_id.has_value()) {
+                            options.feature_payloads[node->id]["plane"] = *geometry_bundle.plane_feature_id;
                         }
                     }
                     break;

@@ -67,11 +67,6 @@ void collect_features(
         return;
     }
 
-    ordered_json dependencies = ordered_json::object();
-    if (!feature->children.empty()) {
-        dependencies["id"] = feature->children.front()->id;
-    }
-
     ordered_json feature_json = ordered_json::object();
     feature_json["id"] = feature->id;
     feature_json["expanded"] = feature->expanded;
@@ -80,7 +75,7 @@ void collect_features(
     feature_json["name"] = feature->name;
     feature_json["state"] = to_string(feature->state);
     feature_json["suppressed"] = feature->suppressed;
-    feature_json["dependencies"] = dependencies;
+    feature_json["dependencies"] = ordered_json::object();
 
     if (const auto* point = std::get_if<model::PointObject>(&feature->object_data)) {
         feature_json["construction"] = point->construction;
@@ -136,6 +131,34 @@ void collect_features(
 nlohmann::ordered_json ModelSerializer::to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options) {
     std::vector<ordered_json> features{};
     collect_features(tree.root(), options, features);
+
+    // Keep ExtrudeFeature linked to an actual sketch feature instead of its tree parent container.
+    uint32_t active_sketch_id = 0U;
+    for (auto& feature : features) {
+        if (!feature.contains("type") || !feature["type"].is_string() ||
+            !feature.contains("id") || !feature["id"].is_number_unsigned()) {
+            continue;
+        }
+
+        const std::string type = feature["type"].get<std::string>();
+        if (type == "SketchFeature") {
+            active_sketch_id = feature["id"].get<uint32_t>();
+            continue;
+        }
+
+        if (type == "ExtrudeFeature" && active_sketch_id != 0U) {
+            feature["sketch_id"] = active_sketch_id;
+        }
+    }
+
+    const size_t tree_feature_count = features.size();
+    if (tree_feature_count >= 2U) {
+        for (size_t i = 0; i + 1U < tree_feature_count; ++i) {
+            features[i]["dependencies"] = ordered_json::object();
+            features[i]["dependencies"]["id"] = features[i + 1U]["id"];
+        }
+        features[tree_feature_count - 1U]["dependencies"] = ordered_json::object();
+    }
 
     if (options.extra_features.is_array()) {
         for (const auto& feature : options.extra_features) {
