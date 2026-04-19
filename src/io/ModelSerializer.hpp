@@ -16,10 +16,10 @@ struct ModelSerializerOptions {
     bool pretty_print = true;
     std::string model_name = "VulcanCAD Model";
     std::string units = "mm";
-    nlohmann::json parameters = nlohmann::json::object();
-    nlohmann::json metadata = nlohmann::json::object();
-    nlohmann::json session = nlohmann::json::object();
-    std::unordered_map<uint32_t, nlohmann::json> feature_payloads{};
+    nlohmann::ordered_json parameters = nlohmann::ordered_json::object();
+    nlohmann::ordered_json metadata = nlohmann::ordered_json::object();
+    nlohmann::ordered_json session = nlohmann::ordered_json::object();
+    std::unordered_map<uint32_t, nlohmann::ordered_json> feature_payloads{};
 };
 
 /**
@@ -33,7 +33,7 @@ public:
      * @param options Serialization settings.
      * @return JSON model payload.
      */
-    [[nodiscard]] static nlohmann::json to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options = {});
+    [[nodiscard]] static nlohmann::ordered_json to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options = {});
 
     /**
      * @brief Converts feature tree into string JSON.

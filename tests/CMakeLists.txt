@@ -4,6 +4,9 @@ add_executable(VulcanCADTests
     ../src/io/ModelDeserializer.cpp
     ../src/model/FeatureTree.cpp
     ../src/geometry/GeometryThreadPool.cpp
+    ../src/sketch/SketchEntity.cpp
+    ../src/sketch/SketchSolver.cpp
+    ../src/sketch/SketchDocument.cpp
 )
 
 target_include_directories(VulcanCADTests PRIVATE ${CMAKE_SOURCE_DIR}/src)

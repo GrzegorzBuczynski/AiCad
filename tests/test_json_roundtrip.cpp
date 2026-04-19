@@ -9,6 +9,7 @@
 #include "io/ModelDeserializer.hpp"
 #include "io/ModelSerializer.hpp"
 #include "model/FeatureTree.hpp"
+#include "sketch/SketchDocument.hpp"
 
 namespace {
 
@@ -74,7 +75,8 @@ void test_serializer_emits_required_fields() {
         }},
     };
 
-    const nlohmann::json serialized = io::ModelSerializer::to_json(source, options);
+    const std::string serialized_text = io::ModelSerializer::to_string(source, options);
+    const nlohmann::ordered_json serialized = nlohmann::ordered_json::parse(serialized_text);
 
     assert(serialized.contains("schema_version"));
     assert(serialized.contains("name"));
@@ -87,9 +89,19 @@ void test_serializer_emits_required_fields() {
     assert(serialized.at("parameters").at("depth") == "#height");
     assert(serialized.at("session").contains("camera"));
 
-    const nlohmann::json& features = serialized.at("features");
+    const nlohmann::ordered_json& features = serialized.at("features");
     assert(features.is_array());
     assert(!features.empty());
+
+    const nlohmann::ordered_json& first_feature = features.at(0);
+    std::vector<std::string> first_feature_keys{};
+    for (auto it = first_feature.begin(); it != first_feature.end(); ++it) {
+        first_feature_keys.push_back(it.key());
+    }
+    assert(first_feature_keys.size() >= 8U);
+    assert(first_feature_keys[0] == "id");
+    assert(first_feature_keys[1] == "expanded");
+    assert(first_feature_keys[2] == "type");
 
     bool saw_expanded_flag = false;
     for (const auto& feature : features) {
@@ -146,6 +158,83 @@ void test_roundtrip_preserves_topology_count() {
     assert(restored.has_value());
 
     assert(restored.value().node_count() == source_count);
+}
+
+void test_serializer_sketch_payload_contains_lines() {
+    model::FeatureTree source = make_demo_tree();
+
+    sketch::SketchDocument sketch({0.0f, 0.0f, 0.0f});
+    const sketch::entity_id line_id = sketch.add_line({-57.0f, -79.0f}, {37.0f, 82.0f});
+    const nlohmann::ordered_json sketch_payload = sketch.to_json_payload();
+
+    const nlohmann::ordered_json& entities = sketch_payload.at("entities");
+    assert(entities.is_array());
+    assert(entities.size() == 3U);
+
+    const nlohmann::ordered_json& point_entity = entities.at(0);
+    const nlohmann::ordered_json& line_entity = entities.at(2);
+
+    std::vector<std::string> point_keys{};
+    for (auto it = point_entity.begin(); it != point_entity.end(); ++it) {
+        point_keys.push_back(it.key());
+    }
+    assert(point_keys.size() >= 4U);
+    assert(point_keys[0] == "id");
+    assert(point_keys[1] == "construction");
+    assert(point_keys[2] == "type");
+
+    std::vector<std::string> line_keys{};
+    for (auto it = line_entity.begin(); it != line_entity.end(); ++it) {
+        line_keys.push_back(it.key());
+    }
+    assert(line_keys.size() >= 5U);
+    assert(line_keys[0] == "id");
+    assert(line_keys[1] == "construction");
+    assert(line_keys[2] == "type");
+    assert(line_entity.at("point_a").is_number_unsigned());
+    assert(line_entity.at("point_b").is_number_unsigned());
+
+    sketch::SketchDocument restored({0.0f, 0.0f, 0.0f});
+    std::string apply_error{};
+    assert(restored.apply_json_payload(sketch_payload, &apply_error));
+    const auto restored_line_points = restored.line_points(line_id);
+    assert(restored_line_points.has_value());
+    assert(restored_line_points->first == 1U);
+    assert(restored_line_points->second == 2U);
+
+    io::ModelSerializerOptions options{};
+    options.pretty_print = true;
+    options.feature_payloads[2] = {
+        {"sketch", sketch_payload},
+    };
+
+    const nlohmann::ordered_json serialized = io::ModelSerializer::to_json(source, options);
+    assert(serialized.contains("features"));
+    assert(serialized["features"].is_array());
+
+    bool found_sketch_payload = false;
+    for (const auto& feature : serialized["features"]) {
+        if (!feature.contains("type") || !feature["type"].is_string()) {
+            continue;
+        }
+
+        if (feature["type"].get<std::string>() != "SketchFeature") {
+            continue;
+        }
+
+        assert(feature.contains("payload"));
+        assert(feature["payload"].contains("sketch"));
+        assert(feature["payload"]["sketch"].contains("entities"));
+        assert(feature["payload"]["sketch"].at("entities").is_array());
+        assert(!feature["payload"]["sketch"].at("entities").empty());
+        assert(feature["payload"]["sketch"].at("entities").at(2).at("point_a") == 1U);
+        assert(feature["payload"]["sketch"].at("entities").at(2).at("point_b") == 2U);
+
+        found_sketch_payload = true;
+        break;
+    }
+
+    assert(found_sketch_payload);
 }
 
 void test_missing_required_field() {
@@ -227,6 +316,7 @@ int main() {
     test_serializer_emits_required_fields();
     test_roundtrip_preserves_feature_truth_fields();
     test_roundtrip_preserves_topology_count();
+    test_serializer_sketch_payload_contains_lines();
     test_missing_required_field();
     test_unknown_schema_version();
     test_circular_parameter_reference();

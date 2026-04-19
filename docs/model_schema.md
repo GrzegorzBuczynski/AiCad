@@ -74,17 +74,34 @@ Example:
 
 Each feature record supports:
 - id: unsigned integer ID from file
+- expanded: UI expansion state persisted between runs
 - type: known feature type string
 - name: feature label
 - state: Valid, Warning, Error, Suppressed
 - suppressed: boolean
-- expanded: UI expansion state persisted between runs
 - parent_id: nullable parent feature ID
 - dependencies: array of feature IDs required before construction
 
 Optional feature payload:
 - payload: object with type-specific fields
 - profile_id: optional profile dependency (for extrude-like features)
+
+### Sketch payload
+
+Sketch features serialize geometry by ids instead of embedding point coordinates in line objects.
+
+Point entity:
+- id
+- construction
+- type: "Point"
+- pos: [x, y]
+
+Line entity:
+- id
+- construction
+- type: "Line"
+- point_a: point entity id
+- point_b: point entity id
 
 ## Deserialization rules
 

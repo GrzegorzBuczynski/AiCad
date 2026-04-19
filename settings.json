@@ -1,24 +1,27 @@
 {
-  "width": 1600,
-  "height": 900,
-  "renderer": "vulkan",
-  "vsync": true,
-  "window": {
-    "width": 1600,
-    "height": 900,
-    "fullscreen": false,
-    "vsync": true
-  },
-  "llm": {
-    "base_url": "http://127.0.0.1:11434",
-    "api_key": "",
-    "model": "gpt-4o",
-    "temperature": 0.2,
-    "max_tokens": 4096
-  },
   "ai_workflow": {
     "mode": "local_pr",
     "require_checker": true,
     "require_user_merge": true
+  },
+  "height": 900,
+  "io": {
+    "last_model_dir": "D:\\Programowanie\\CadAI\\build\\debug\\session"
+  },
+  "llm": {
+    "api_key": "",
+    "base_url": "http://127.0.0.1:11434",
+    "max_tokens": 4096,
+    "model": "gpt-4o",
+    "temperature": 0.2
+  },
+  "renderer": "vulkan",
+  "vsync": true,
+  "width": 1600,
+  "window": {
+    "fullscreen": false,
+    "height": 900,
+    "vsync": true,
+    "width": 1600
   }
 }

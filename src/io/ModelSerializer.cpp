@@ -10,6 +10,8 @@ namespace {
 
 constexpr const char* k_schema_version = "1.0";
 
+using ordered_json = nlohmann::ordered_json;
+
 const char* to_string(model::FeatureType type) {
     switch (type) {
     case model::FeatureType::PartContainer:
@@ -53,26 +55,25 @@ const char* to_string(model::FeatureState state) {
 void collect_features(
     const model::FeatureNode* feature,
     const ModelSerializerOptions& options,
-    std::vector<nlohmann::json>& output) {
+    std::vector<ordered_json>& output) {
     if (feature == nullptr) {
         return;
     }
 
-    nlohmann::json dependencies = nlohmann::json::array();
+    ordered_json dependencies = ordered_json::array();
     if (feature->parent != nullptr) {
         dependencies.push_back(feature->parent->id);
     }
 
-    nlohmann::json feature_json = {
-        {"id", feature->id},
-        {"type", to_string(feature->type)},
-        {"name", feature->name},
-        {"state", to_string(feature->state)},
-        {"suppressed", feature->suppressed},
-        {"expanded", feature->expanded},
-        {"parent_id", feature->parent != nullptr ? nlohmann::json(feature->parent->id) : nlohmann::json(nullptr)},
-        {"dependencies", dependencies},
-    };
+    ordered_json feature_json = ordered_json::object();
+    feature_json["id"] = feature->id;
+    feature_json["expanded"] = feature->expanded;
+    feature_json["type"] = to_string(feature->type);
+    feature_json["name"] = feature->name;
+    feature_json["state"] = to_string(feature->state);
+    feature_json["suppressed"] = feature->suppressed;
+    feature_json["parent_id"] = feature->parent != nullptr ? ordered_json(feature->parent->id) : ordered_json(nullptr);
+    feature_json["dependencies"] = dependencies;
 
     const auto payload_it = options.feature_payloads.find(feature->id);
     if (payload_it != options.feature_payloads.end()) {
@@ -93,39 +94,39 @@ void collect_features(
 
 }  // namespace
 
-nlohmann::json ModelSerializer::to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options) {
-    std::vector<nlohmann::json> features{};
+nlohmann::ordered_json ModelSerializer::to_json(const model::FeatureTree& tree, const ModelSerializerOptions& options) {
+    std::vector<ordered_json> features{};
     collect_features(tree.root(), options, features);
 
-    nlohmann::json metadata = options.metadata;
+    ordered_json metadata = options.metadata;
     if (!metadata.is_object()) {
-        metadata = nlohmann::json::object();
+        metadata = ordered_json::object();
     }
     metadata["generator"] = "VulcanCAD";
 
-    nlohmann::json parameters = options.parameters;
+    ordered_json parameters = options.parameters;
     if (!parameters.is_object()) {
-        parameters = nlohmann::json::object();
+        parameters = ordered_json::object();
     }
 
-    nlohmann::json session = options.session;
+    ordered_json session = options.session;
     if (!session.is_object()) {
-        session = nlohmann::json::object();
+        session = ordered_json::object();
     }
 
-    return {
-        {"schema_version", k_schema_version},
-        {"name", options.model_name},
-        {"units", options.units},
-        {"parameters", parameters},
-        {"features", features},
-        {"metadata", metadata},
-        {"session", session},
-    };
+    ordered_json root = ordered_json::object();
+    root["schema_version"] = k_schema_version;
+    root["name"] = options.model_name;
+    root["units"] = options.units;
+    root["parameters"] = parameters;
+    root["features"] = features;
+    root["metadata"] = metadata;
+    root["session"] = session;
+    return root;
 }
 
 std::string ModelSerializer::to_string(const model::FeatureTree& tree, const ModelSerializerOptions& options) {
-    const nlohmann::json payload = to_json(tree, options);
+    const ordered_json payload = to_json(tree, options);
     return payload.dump(options.pretty_print ? 2 : -1);
 }
 

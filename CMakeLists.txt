@@ -69,11 +69,7 @@ if(WIN32)
     endif()
 endif()
 
-add_custom_command(TARGET VulcanCAD POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/settings.json
-        $<TARGET_FILE_DIR:VulcanCAD>/settings.json
-)
+target_compile_definitions(VulcanCAD PRIVATE VULCANCAD_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 
 if(TARGET imgui::imgui)
     target_link_libraries(VulcanCAD PRIVATE imgui::imgui)

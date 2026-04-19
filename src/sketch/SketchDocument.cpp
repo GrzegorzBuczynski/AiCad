@@ -354,6 +354,140 @@ void SketchDocument::set_snap_enabled(bool enabled) {
     snap_enabled_ = enabled;
 }
 
+void SketchDocument::clear_geometry() {
+    entities_.clear();
+    constraints_.clear();
+    next_entity_id_ = 1U;
+    next_constraint_id_ = 1U;
+    last_result_ = SolveResult{};
+}
+
+nlohmann::ordered_json SketchDocument::to_json_payload() const {
+    nlohmann::ordered_json entities = nlohmann::ordered_json::array();
+
+    for (const SketchEntity& entity : entities_) {
+        nlohmann::ordered_json item = nlohmann::ordered_json::object();
+        item["id"] = entity.id;
+        item["construction"] = entity.construction;
+
+        if (const auto* point = std::get_if<PointEntity>(&entity.data)) {
+            item["type"] = "Point";
+            item["pos"] = {point->pos.x, point->pos.y};
+        } else if (const auto* line = std::get_if<LineEntity>(&entity.data)) {
+            item["type"] = "Line";
+            item["point_a"] = line->point_a;
+            item["point_b"] = line->point_b;
+        } else if (const auto* circle = std::get_if<CircleEntity>(&entity.data)) {
+            item["type"] = "Circle";
+            item["center"] = {circle->center.x, circle->center.y};
+            item["radius"] = circle->radius;
+        } else if (const auto* arc = std::get_if<ArcEntity>(&entity.data)) {
+            item["type"] = "Arc";
+            item["center"] = {arc->center.x, arc->center.y};
+            item["radius"] = arc->r;
+            item["angle_start"] = arc->angle_start;
+            item["angle_end"] = arc->angle_end;
+        }
+
+        entities.push_back(std::move(item));
+    }
+
+    nlohmann::ordered_json root = nlohmann::ordered_json::object();
+    root["entities"] = entities;
+    return root;
+}
+
+bool SketchDocument::apply_json_payload(const nlohmann::json& payload, std::string* error) {
+    if (!payload.is_object() || !payload.contains("entities") || !payload.at("entities").is_array()) {
+        if (error != nullptr) {
+            *error = "Invalid sketch payload: missing entities array";
+        }
+        return false;
+    }
+
+    clear_geometry();
+
+    std::unordered_set<entity_id> seen_ids{};
+
+    for (const auto& item : payload.at("entities")) {
+        if (!item.is_object() || !item.contains("id") || !item.at("id").is_number_unsigned()) {
+            continue;
+        }
+
+        const entity_id id = item.at("id").get<entity_id>();
+        if (seen_ids.contains(id)) {
+            if (error != nullptr) {
+                *error = "Invalid sketch payload: duplicate entity id " + std::to_string(id);
+            }
+            clear_geometry();
+            return false;
+        }
+        seen_ids.insert(id);
+        next_entity_id_ = std::max(next_entity_id_, id + 1U);
+
+        if (!item.contains("type") || !item.at("type").is_string()) {
+            continue;
+        }
+
+        const std::string type = item.at("type").get<std::string>();
+        const bool construction = item.value("construction", false);
+
+        if (type == "Point" && item.contains("pos") && item.at("pos").is_array() && item.at("pos").size() == 2) {
+            const glm::vec2 pos{item.at("pos").at(0).get<float>(), item.at("pos").at(1).get<float>()};
+            entities_.push_back(SketchEntity{id, construction, false, PointEntity{pos}});
+            continue;
+        }
+
+        if (type == "Line" && item.contains("point_a") && item.contains("point_b") &&
+            item.at("point_a").is_number_unsigned() && item.at("point_b").is_number_unsigned()) {
+            const entity_id point_a = item.at("point_a").get<entity_id>();
+            const entity_id point_b = item.at("point_b").get<entity_id>();
+            entities_.push_back(SketchEntity{id, construction, false, LineEntity{point_a, point_b, {}, {}}});
+            continue;
+        }
+
+        if (type == "Circle" && item.contains("center") && item.contains("radius") &&
+            item.at("center").is_array() && item.at("center").size() == 2) {
+            const glm::vec2 center{item.at("center").at(0).get<float>(), item.at("center").at(1).get<float>()};
+            const float radius = item.at("radius").get<float>();
+            entities_.push_back(SketchEntity{id, construction, false, CircleEntity{center, std::max(radius, 0.001f)}});
+            continue;
+        }
+
+        if (type == "Arc" && item.contains("center") && item.contains("radius") && item.contains("angle_start") && item.contains("angle_end") &&
+            item.at("center").is_array() && item.at("center").size() == 2) {
+            const glm::vec2 center{item.at("center").at(0).get<float>(), item.at("center").at(1).get<float>()};
+            const float radius = item.at("radius").get<float>();
+            const float angle_start = item.at("angle_start").get<float>();
+            const float angle_end = item.at("angle_end").get<float>();
+            entities_.push_back(SketchEntity{id, construction, false, ArcEntity{center, std::max(radius, 0.001f), angle_start, angle_end}});
+            continue;
+        }
+    }
+
+    for (const SketchEntity& entity : entities_) {
+        const auto* line = std::get_if<LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        if (!seen_ids.contains(line->point_a) || !seen_ids.contains(line->point_b)) {
+            if (error != nullptr) {
+                *error = "Invalid sketch payload: line references missing point id";
+            }
+            clear_geometry();
+            return false;
+        }
+    }
+
+    std::sort(entities_.begin(), entities_.end(), [](const SketchEntity& lhs, const SketchEntity& rhs) {
+        return lhs.id < rhs.id;
+    });
+
+    (void)solve();
+    return true;
+}
+
 void SketchDocument::sync_lines_from_points() {
     for (SketchEntity& entity : entities_) {
         auto* line = std::get_if<LineEntity>(&entity.data);

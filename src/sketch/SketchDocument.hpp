@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <optional>
 #include <utility>
 #include <unordered_set>
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <nlohmann/json.hpp>
 
 #include "geometry/IGeometryKernel.hpp"
 #include "model/Plane.hpp"
@@ -206,6 +208,25 @@ public:
      * @param enabled Snap state.
      */
     void set_snap_enabled(bool enabled);
+
+    /**
+     * @brief Clears sketch entities and constraints.
+     */
+    void clear_geometry();
+
+    /**
+     * @brief Serializes sketch entities to JSON payload.
+     * @return JSON object with entities list.
+     */
+    [[nodiscard]] nlohmann::ordered_json to_json_payload() const;
+
+    /**
+     * @brief Restores sketch entities from JSON payload.
+     * @param payload Input payload object.
+     * @param error Optional output error text.
+     * @return True when payload was applied.
+     */
+    bool apply_json_payload(const nlohmann::json& payload, std::string* error = nullptr);
 
 private:
     std::vector<SketchEntity> entities_{};
