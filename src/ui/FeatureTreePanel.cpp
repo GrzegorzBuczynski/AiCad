@@ -4,13 +4,22 @@
 
 namespace ui {
 
+bool FeatureTreePanel::consume_open_sketch_request() {
+    const bool requested = open_sketch_request_;
+    open_sketch_request_ = false;
+    return requested;
+}
+
 void FeatureTreePanel::draw() {
     ImGui::Begin("FeatureTree");
     ImGui::TextUnformatted("Specification Tree");
     ImGui::Separator();
 
     if (ImGui::TreeNode("Part.001")) {
-        ImGui::BulletText("Sketch.001");
+        constexpr ImGuiSelectableFlags sketch_flags = ImGuiSelectableFlags_AllowDoubleClick;
+        if (ImGui::Selectable("Sketch.001", false, sketch_flags) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            open_sketch_request_ = true;
+        }
         ImGui::BulletText("Pad.001");
         ImGui::BulletText("Fillet.001");
         ImGui::BulletText("Shell.001");

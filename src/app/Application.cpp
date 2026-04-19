@@ -145,6 +145,18 @@ bool Application::init() {
         camera_session_loaded_ = true;
     }
 
+    sketch_document_.add_line({-30.0f, -20.0f}, {30.0f, -20.0f});
+    sketch_document_.add_line({30.0f, -20.0f}, {30.0f, 20.0f});
+    sketch_document_.add_line({30.0f, 20.0f}, {-30.0f, 20.0f});
+    sketch_document_.add_line({-30.0f, 20.0f}, {-30.0f, -20.0f});
+    sketch_document_.add_constraint(sketch::HorizontalConstraint{1U});
+    sketch_document_.add_constraint(sketch::HorizontalConstraint{3U});
+    sketch_document_.add_constraint(sketch::VerticalConstraint{2U});
+    sketch_document_.add_constraint(sketch::VerticalConstraint{4U});
+    sketch_document_.add_constraint(sketch::DistanceDim{1U, 0U, 1U, 1U, 60.0f});
+    sketch_document_.add_constraint(sketch::DistanceDim{1U, 1U, 2U, 1U, 40.0f});
+    sketch_document_.solve();
+
     camera_.set_viewport_size(static_cast<float>(settings_.width), static_cast<float>(settings_.height));
     sync_camera_to_viewport();
 
@@ -158,7 +170,15 @@ void Application::run() {
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL3_ProcessEvent(&event);
             window_.process_event(event);
-            camera_.handle_event(event);
+            if (!sketch_document_.is_active()) {
+                camera_.handle_event(event);
+            }
+
+            if (sketch_document_.is_active() && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
+                sketch_document_.exit();
+                g_orchestrator.submit_geometry_request("rebuild_dependent_features_from_sketch");
+            }
+
             if (event.type == SDL_EVENT_QUIT) {
                 running_ = false;
             }
@@ -415,8 +435,25 @@ void Application::build_docked_layout() {
     draw_menu_bar();
 
     feature_tree_panel_.draw();
+    viewport_panel_.set_sketch_profiles(sketch_document_.extract_preview_profiles());
+
     viewport_panel_.draw();
     properties_panel_.draw();
+
+    if (feature_tree_panel_.consume_open_sketch_request()) {
+        sketch_document_.enter();
+        sketch_document_.solve();
+    }
+
+    sketch_view_.draw_overlay(
+        sketch_document_,
+        viewport_panel_.content_origin(),
+        viewport_panel_.content_size(),
+        vulkan_context_.view_projection_matrix());
+
+    if (sketch_document_.is_active()) {
+        sketch_document_.solve();
+    }
 
     draw_status_bar();
 
@@ -507,6 +544,23 @@ void Application::draw_status_bar() {
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
     ImGui::Text("Camera: %s", camera_.state().projection_mode == scene::ProjectionMode::perspective ? "perspective" : "orthographic");
+
+    if (sketch_document_.is_active()) {
+        const int dof = sketch_document_.dof();
+        ImVec4 dof_color = ImVec4(0.12f, 0.42f, 0.86f, 1.0f);
+        if (dof == 0) {
+            dof_color = ImVec4(0.12f, 0.62f, 0.22f, 1.0f);
+        } else if (dof < 0) {
+            dof_color = ImVec4(0.82f, 0.18f, 0.15f, 1.0f);
+        }
+
+        ImGui::SameLine();
+        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine();
+        ImGui::TextUnformatted("Sketch DOF:");
+        ImGui::SameLine();
+        ImGui::TextColored(dof_color, "%d", dof);
+    }
 
     ImGui::End();
 }

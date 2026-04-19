@@ -8,6 +8,8 @@
 #include "renderer/RenderFrame.hpp"
 #include "renderer/VulkanContext.hpp"
 #include "scene/Camera.hpp"
+#include "sketch/SketchDocument.hpp"
+#include "sketch/SketchView.hpp"
 #include "io/CameraSession.hpp"
 #include "ui/FeatureTreePanel.hpp"
 #include "ui/PropertiesPanel.hpp"
@@ -82,6 +84,8 @@ private:
     ui::PropertiesPanel properties_panel_{};
     scene::Camera camera_{};
     scene::State saved_camera_state_{};
+    sketch::SketchDocument sketch_document_{};
+    sketch::SketchView sketch_view_{};
 
     vk_wrap::descriptor_pool imgui_descriptor_pool_{};
     std::array<VkFormat, 1> imgui_color_attachment_formats_{};

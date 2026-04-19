@@ -35,6 +35,36 @@ void draw_segment(ImDrawList* draw_list, const glm::mat4& view_projection, const
     }
 }
 
+void draw_sketch_profiles(
+    ImDrawList* draw_list,
+    const glm::mat4& view_projection,
+    const ImVec2& origin,
+    const ImVec2& size,
+    const std::vector<geometry::Profile>& profiles) {
+    constexpr float k_mm_to_world = 0.02f;
+    constexpr float k_plane_z = 0.0f;
+
+    for (const geometry::Profile& profile : profiles) {
+        if (profile.points.size() < 2U) {
+            continue;
+        }
+
+        for (size_t i = 0; i < profile.points.size(); ++i) {
+            const size_t next = (i + 1U) % profile.points.size();
+            if (!profile.closed && next == 0U) {
+                break;
+            }
+
+            const glm::vec2 a_mm = profile.points[i];
+            const glm::vec2 b_mm = profile.points[next];
+
+            const glm::vec3 a_world{a_mm.x * k_mm_to_world, a_mm.y * k_mm_to_world, k_plane_z};
+            const glm::vec3 b_world{b_mm.x * k_mm_to_world, b_mm.y * k_mm_to_world, k_plane_z};
+            draw_segment(draw_list, view_projection, origin, size, a_world, b_world, IM_COL32(40, 48, 64, 255), 2.2f);
+        }
+    }
+}
+
 }  // namespace
 
 void ViewportPanel::set_texture(ImTextureID texture) {
@@ -51,8 +81,13 @@ void ViewportPanel::draw() {
     ImGui::Begin("Viewport");
 
     const ImVec2 avail = ImGui::GetContentRegionAvail();
+    content_origin_ = ImGui::GetCursorScreenPos();
+    content_size_ = avail;
+    hovered_ = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
     if (viewport_texture_ != static_cast<ImTextureID>(0) && avail.x > 1.0f && avail.y > 1.0f) {
         ImGui::Image(viewport_texture_, avail);
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_sketch_profiles(draw_list, view_projection_, content_origin_, avail, sketch_profiles_);
     } else {
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -100,6 +135,7 @@ void ViewportPanel::draw() {
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{2.0f, 0.0f, 0.0f}, IM_COL32(220, 90, 90, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 2.0f, 0.0f}, IM_COL32(80, 170, 110, 255), 2.0f);
         draw_segment(draw_list, view_projection_, origin, avail, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, 2.0f}, IM_COL32(58, 120, 210, 255), 2.0f);
+        draw_sketch_profiles(draw_list, view_projection_, origin, avail, sketch_profiles_);
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 16.0f, origin.y + 16.0f));
         ImGui::TextUnformatted("Camera-driven viewport");
@@ -115,6 +151,22 @@ void ViewportPanel::draw() {
     }
 
     ImGui::End();
+}
+
+ImVec2 ViewportPanel::content_origin() const {
+    return content_origin_;
+}
+
+ImVec2 ViewportPanel::content_size() const {
+    return content_size_;
+}
+
+bool ViewportPanel::is_hovered() const {
+    return hovered_;
+}
+
+void ViewportPanel::set_sketch_profiles(const std::vector<geometry::Profile>& profiles) {
+    sketch_profiles_ = profiles;
 }
 
 }  // namespace ui

@@ -25,6 +25,10 @@ add_executable(VulcanCAD
     src/renderer/RenderFrame.cpp
     src/scene/Camera.cpp
     src/io/CameraSession.cpp
+    src/sketch/SketchEntity.cpp
+    src/sketch/SketchSolver.cpp
+    src/sketch/SketchDocument.cpp
+    src/sketch/SketchView.cpp
     src/geometry/GeometryThreadPool.cpp
     src/geometry/FallbackKernel.cpp
     src/geometry/OcctKernel.cpp
