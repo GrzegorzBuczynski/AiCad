@@ -1377,7 +1377,7 @@ Optional: DirectX 12 behind <span class="kw3">#ifdef USE_DX12</span>. Compile fl
 
 <span class="kw2">Fault isolation:</span>
   All solve/build steps execute in GeometryWorker (module 2) via IPC.
-  If worker dies, MainOrchestrator (module 1) relaunches worker and retries once with same parameters.
+  If worker dies, MainOrchestrator (module 1) let user decide to delegate again worker and retries once with same parameters or changed by user.
   If retry fails, feature state = Error and UI remains responsive.
 
 <span class="kw2">FeatureTree Panel (ImGui):</span>

@@ -1,5 +1,6 @@
 #include "app/Application.hpp"
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -57,23 +58,13 @@ public:
         worker_.stop();
     }
 
-    bool submit_geometry_request(const std::string& payload) {
-        const worker_result first_try = worker_.execute(payload);
-        if (first_try == worker_result::ok) {
-            return true;
-        }
+    worker_result submit_geometry_request_once(const std::string& payload) {
+        return worker_.execute(payload);
+    }
 
-        if (first_try == worker_result::crashed) {
-            worker_.stop();
-            if (!worker_.start()) {
-                return false;
-            }
-
-            const worker_result retry = worker_.execute(payload);
-            return retry == worker_result::ok;
-        }
-
-        return false;
+    bool restart_worker() {
+        worker_.stop();
+        return worker_.start();
     }
 
 private:
@@ -140,6 +131,17 @@ bool Application::init() {
     if (!init_imgui_backend()) {
         last_error_ = "Failed to initialize Dear ImGui backend";
         return false;
+    }
+
+    feature_tree_panel_.set_feature_tree(&feature_tree_);
+    if (const model::FeatureNode* root = feature_tree_.root()) {
+        model::FeatureTreeError tree_error = model::FeatureTreeError::Ok;
+        const uint32_t sketch_id = feature_tree_.create_feature(model::FeatureType::SketchFeature, "Sketch.001", root->id, &tree_error);
+        if (sketch_id != 0U && tree_error == model::FeatureTreeError::Ok) {
+            (void)feature_tree_.create_feature(model::FeatureType::ExtrudeFeature, "Pad.001", root->id, nullptr);
+            (void)feature_tree_.create_feature(model::FeatureType::FilletFeature, "Fillet.001", root->id, nullptr);
+            (void)feature_tree_.create_feature(model::FeatureType::ShellFeature, "Shell.001", root->id, nullptr);
+        }
     }
 
     if (io::CameraSession::load("session/camera.json", camera_)) {
@@ -216,7 +218,7 @@ void Application::run() {
 
             if (sketch_document_.is_active() && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
                 sketch_document_.exit();
-                g_orchestrator.submit_geometry_request("rebuild_dependent_features_from_sketch");
+                (void)g_orchestrator.submit_geometry_request_once("rebuild_dependent_features_from_sketch");
             }
 
             if (event.type == SDL_EVENT_QUIT) {
@@ -242,7 +244,7 @@ void Application::run() {
             }
         }
 
-        if (!g_orchestrator.submit_geometry_request("frame_update_payload")) {
+        if (g_orchestrator.submit_geometry_request_once("frame_update_payload") != worker_result::ok) {
             last_error_ = "Geometry module request failed after restart attempt";
         }
 
@@ -490,15 +492,7 @@ void Application::build_docked_layout() {
     viewport_panel_.draw();
     properties_panel_.draw();
 
-    const bool open_plane_properties = feature_tree_panel_.consume_open_plane_properties_request();
-    if (open_plane_properties) {
-        sketch_view_.request_open_plane_properties();
-    }
-
-    if (!open_plane_properties && feature_tree_panel_.consume_open_sketch_request()) {
-        sketch_document_.enter();
-        sketch_document_.solve();
-    }
+    process_feature_tree_actions();
 
     sketch_view_.draw_overlay(
         sketch_document_,
@@ -511,8 +505,142 @@ void Application::build_docked_layout() {
     }
 
     draw_status_bar();
+    draw_worker_retry_popup();
 
     ImGui::Render();
+}
+
+void Application::process_feature_tree_actions() {
+    const bool open_plane_properties = feature_tree_panel_.consume_open_plane_properties_request();
+    if (open_plane_properties) {
+        sketch_view_.request_open_plane_properties();
+    }
+
+    if (!open_plane_properties && feature_tree_panel_.consume_open_sketch_request()) {
+        sketch_document_.enter();
+        sketch_document_.solve();
+    }
+
+    const std::optional<ui::RebuildIntent> rebuild_intent = feature_tree_panel_.consume_rebuild_intent();
+    if (!rebuild_intent.has_value()) {
+        return;
+    }
+
+    model::RebuildRequest request{};
+    request.full_rebuild = rebuild_intent->full_rebuild;
+    request.start_node_id = rebuild_intent->start_node_id;
+    (void)execute_feature_rebuild(request);
+}
+
+bool Application::execute_feature_rebuild(const model::RebuildRequest& request, const std::string& payload_override, bool allow_retry_popup) {
+    auto delegate = [&](const nlohmann::json& payload) -> model::RebuildDelegateResult {
+        const std::string transport_payload = payload_override.empty() ? payload.dump() : payload_override;
+        const worker_result result = g_orchestrator.submit_geometry_request_once(transport_payload);
+        if (result == worker_result::ok) {
+            return {true, false, {}};
+        }
+        if (result == worker_result::crashed) {
+            return {false, true, "GeometryWorker crashed during rebuild"};
+        }
+        return {false, false, "GeometryWorker failed rebuild request"};
+    };
+
+    const model::RebuildResult rebuild_result = feature_tree_.rebuild(
+        request,
+        delegate,
+        [&]() {
+            (void)g_orchestrator.submit_geometry_request_once("tessellate");
+        },
+        [&]() {
+            (void)g_orchestrator.submit_geometry_request_once("upload_mesh");
+        },
+        [&]() {
+            (void)g_orchestrator.submit_geometry_request_once("repaint");
+        });
+
+    if (rebuild_result.success) {
+        return true;
+    }
+
+    if (rebuild_result.worker_crashed) {
+        if (!allow_retry_popup) {
+            if (rebuild_result.failed_node_id != 0U) {
+                (void)feature_tree_.set_feature_state(rebuild_result.failed_node_id, model::FeatureState::Error);
+            }
+            return false;
+        }
+
+        worker_retry_context_ = WorkerRetryContext{};
+        worker_retry_context_->request = model::RebuildRequest{false, rebuild_result.failed_node_id};
+        worker_retry_context_->failed_node_id = rebuild_result.failed_node_id;
+
+        nlohmann::json payload = {
+            {"command", "rebuild_feature"},
+            {"feature_id", rebuild_result.failed_node_id},
+            {"full_rebuild", false},
+            {"start_node_id", rebuild_result.failed_node_id},
+        };
+        const std::string serialized = payload.dump(2);
+        std::snprintf(worker_retry_context_->payload_buffer.data(), worker_retry_context_->payload_buffer.size(), "%s", serialized.c_str());
+        worker_retry_popup_opened_ = false;
+        return false;
+    }
+
+    if (rebuild_result.failed_node_id != 0U) {
+        (void)feature_tree_.set_feature_state(rebuild_result.failed_node_id, model::FeatureState::Error);
+    }
+    return false;
+}
+
+void Application::draw_worker_retry_popup() {
+    if (!worker_retry_context_.has_value()) {
+        return;
+    }
+
+    if (!worker_retry_popup_opened_) {
+        ImGui::OpenPopup("Geometry Worker Crash");
+        worker_retry_popup_opened_ = true;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 300.0f), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("Geometry Worker Crash", nullptr, ImGuiWindowFlags_NoResize)) {
+        return;
+    }
+
+    ImGui::TextWrapped("GeometryWorker crashed while rebuilding feature %u. Review payload and decide whether to delegate again.", worker_retry_context_->failed_node_id);
+    ImGui::Separator();
+    ImGui::InputTextMultiline("Payload", worker_retry_context_->payload_buffer.data(), worker_retry_context_->payload_buffer.size(), ImVec2(-1.0f, 170.0f));
+
+    if (ImGui::Button("Retry Delegation")) {
+        const model::RebuildRequest retry_request = worker_retry_context_->request;
+        const std::string retry_payload = std::string(worker_retry_context_->payload_buffer.data());
+
+        worker_retry_context_.reset();
+        worker_retry_popup_opened_ = false;
+        ImGui::CloseCurrentPopup();
+
+        if (g_orchestrator.restart_worker()) {
+            (void)execute_feature_rebuild(retry_request, retry_payload, false);
+        } else {
+            last_error_ = "Failed to restart GeometryWorker";
+            if (retry_request.start_node_id != 0U) {
+                (void)feature_tree_.set_feature_state(retry_request.start_node_id, model::FeatureState::Error);
+            }
+        }
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel And Mark Error")) {
+        const uint32_t failed_node_id = worker_retry_context_->failed_node_id;
+        worker_retry_context_.reset();
+        worker_retry_popup_opened_ = false;
+        ImGui::CloseCurrentPopup();
+        if (failed_node_id != 0U) {
+            (void)feature_tree_.set_feature_state(failed_node_id, model::FeatureState::Error);
+        }
+    }
+
+    ImGui::EndPopup();
 }
 
 void Application::draw_menu_bar() {
@@ -532,8 +660,22 @@ void Application::draw_menu_bar() {
     }
 
     if (ImGui::BeginMenu("Edit")) {
-        ImGui::MenuItem("Undo", "Ctrl+Z", false, false);
-        ImGui::MenuItem("Redo", "Ctrl+Y", false, false);
+        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, feature_tree_.can_undo())) {
+            if (feature_tree_.undo()) {
+                const model::FeatureNode* tree_root = feature_tree_.root();
+                if (tree_root != nullptr) {
+                    (void)execute_feature_rebuild(model::RebuildRequest{true, tree_root->id});
+                }
+            }
+        }
+        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, feature_tree_.can_redo())) {
+            if (feature_tree_.redo()) {
+                const model::FeatureNode* tree_root = feature_tree_.root();
+                if (tree_root != nullptr) {
+                    (void)execute_feature_rebuild(model::RebuildRequest{true, tree_root->id});
+                }
+            }
+        }
         ImGui::EndMenu();
     }
 
@@ -590,7 +732,8 @@ void Application::draw_status_bar() {
     ImGui::SameLine();
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
-    ImGui::Text("Features: 0");
+    const size_t feature_count = feature_tree_.node_count() > 0U ? feature_tree_.node_count() - 1U : 0U;
+    ImGui::Text("Features: %zu", feature_count);
     ImGui::SameLine();
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
