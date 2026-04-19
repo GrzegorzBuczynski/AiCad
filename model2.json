@@ -1,0 +1,157 @@
+{
+  "schema_version": "1.0",
+  "name": "VulcanCAD Model",
+  "units": "mm",
+  "parameters": {},
+  "features": [
+    {
+      "id": 1,
+      "expanded": true,
+      "root": true,
+      "type": "PartContainer",
+      "name": "Part.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 2
+      }
+    },
+    {
+      "id": 2,
+      "expanded": true,
+      "root": false,
+      "type": "SketchFeature",
+      "name": "Sketch.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 3
+      },
+      "payload": {
+        "id": 8,
+        "ids": [
+          8
+        ]
+      },
+      "plane": 9
+    },
+    {
+      "id": 3,
+      "expanded": true,
+      "root": false,
+      "type": "ExtrudeFeature",
+      "name": "Pad.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 4
+      },
+      "sketch_id": 2
+    },
+    {
+      "id": 4,
+      "expanded": true,
+      "root": false,
+      "type": "FilletFeature",
+      "name": "Fillet.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {
+        "id": 5
+      }
+    },
+    {
+      "id": 5,
+      "expanded": true,
+      "root": false,
+      "type": "ShellFeature",
+      "name": "Shell.001",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {}
+    },
+    {
+      "id": 6,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.6",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "pos": [
+        -60.0,
+        204.0
+      ]
+    },
+    {
+      "id": 7,
+      "expanded": true,
+      "root": false,
+      "type": "Point",
+      "name": "Point.7",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "pos": [
+        78.0,
+        -198.0
+      ]
+    },
+    {
+      "id": 8,
+      "expanded": true,
+      "root": false,
+      "type": "Line",
+      "name": "Line.8",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "construction": false,
+      "point_a": 6,
+      "point_b": 7
+    },
+    {
+      "id": 9,
+      "expanded": true,
+      "root": false,
+      "type": "Plane",
+      "name": "Plane.9",
+      "state": "Valid",
+      "suppressed": false,
+      "dependencies": {},
+      "orginPoint": 6,
+      "vector": 7
+    }
+  ],
+  "metadata": {
+    "source": "File->Save As",
+    "generator": "VulcanCAD"
+  },
+  "session": {
+    "camera": {
+      "far_plane": 1000.0,
+      "fov": 60.0,
+      "near_plane": 0.10000000149011612,
+      "ortho_scale": 1.0,
+      "position": [
+        6.38468599319458,
+        7.319828033447266,
+        3.6953935623168945
+      ],
+      "projection_mode": "perspective",
+      "target": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  }
+}

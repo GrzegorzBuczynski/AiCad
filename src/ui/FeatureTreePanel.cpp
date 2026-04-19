@@ -163,6 +163,20 @@ void FeatureTreePanel::draw_sketch_entity_hierarchy() {
     ImGui::TreePop();
 }
 
+void FeatureTreePanel::apply_pending_drag_move() {
+    if (!pending_drag_move_.has_value() || tree_ == nullptr) {
+        pending_drag_move_.reset();
+        return;
+    }
+
+    const PendingDragMove pending = *pending_drag_move_;
+    pending_drag_move_.reset();
+
+    if (tree_->reorder_feature(pending.dragged_id, pending.target_parent_id, pending.insert_index) == model::FeatureTreeError::Ok) {
+        rebuild_intent_ = RebuildIntent{false, pending.target_parent_id};
+    }
+}
+
 void FeatureTreePanel::draw_feature_node(model::FeatureNode* feature) {
     if (tree_ == nullptr || feature == nullptr) {
         return;
@@ -234,15 +248,8 @@ void FeatureTreePanel::draw_feature_node(model::FeatureNode* feature) {
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("VULCANCAD_FEATURE_NODE")) {
             const uint32_t dragged_id = *static_cast<const uint32_t*>(payload->Data);
-            if (dragged_id != feature->id && feature->parent != nullptr) {
-                auto& siblings = feature->parent->children;
-                const auto it = std::find(siblings.begin(), siblings.end(), feature);
-                if (it != siblings.end()) {
-                    const size_t insert_index = static_cast<size_t>(std::distance(siblings.begin(), it)) + 1U;
-                    if (tree_->reorder_feature(dragged_id, feature->parent->id, insert_index) == model::FeatureTreeError::Ok) {
-                        rebuild_intent_ = RebuildIntent{false, feature->parent->id};
-                    }
-                }
+            if (dragged_id != feature->id) {
+                pending_drag_move_ = PendingDragMove{dragged_id, feature->id, feature->children.size()};
             }
         }
         ImGui::EndDragDropTarget();
@@ -307,6 +314,8 @@ void FeatureTreePanel::draw() {
     } else {
         draw_feature_node(tree_->root());
     }
+
+    apply_pending_drag_move();
 
     if (rename_feature_id_ != 0U) {
         ImGui::SetNextWindowSize(ImVec2(360.0f, 120.0f), ImGuiCond_Appearing);

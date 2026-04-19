@@ -70,14 +70,22 @@ public:
     void set_font_scale(float scale);
 
 private:
+    struct PendingDragMove {
+        uint32_t dragged_id = 0U;
+        uint32_t target_parent_id = 0U;
+        size_t insert_index = 0U;
+    };
+
     void draw_feature_node(model::FeatureNode* feature);
     [[nodiscard]] static const char* icon_for_type(model::FeatureType type);
     [[nodiscard]] static uint32_t color_for_state(model::FeatureState state);
     void draw_sketch_entity_hierarchy();
+    void apply_pending_drag_move();
 
     model::FeatureTree* tree_ = nullptr;
     sketch::SketchDocument* sketch_document_ = nullptr;
     std::optional<RebuildIntent> rebuild_intent_{};
+    std::optional<PendingDragMove> pending_drag_move_{};
     uint32_t rename_feature_id_ = 0U;
     std::array<char, 128> rename_buffer_{};
     uint32_t edit_point_id_ = 0U;
