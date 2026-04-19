@@ -1,8 +1,15 @@
 #include "app/Application.hpp"
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+
+#if defined(_WIN32)
+#define NOMINMAX
+#include <windows.h>
+#include <commdlg.h>
+#endif
 
 #include <SDL3/SDL.h>
 #include <imgui_impl_sdl3.h>
@@ -11,9 +18,76 @@
 #include <imgui_internal.h>
 #include <nlohmann/json.hpp>
 
+#include "io/ModelDeserializer.hpp"
+#include "io/ModelSerializer.hpp"
+
 namespace {
 
 app::ipc::MainOrchestrator g_orchestrator{};
+
+std::optional<std::string> open_file_picker(const char* title, const std::string& initial_dir) {
+#if defined(_WIN32)
+    OPENFILENAMEA dialog{};
+    std::array<char, MAX_PATH> file_buffer{};
+    const char filter[] = "JSON files (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
+
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = filter;
+    dialog.lpstrFile = file_buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(file_buffer.size());
+    dialog.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
+    dialog.lpstrTitle = title;
+    dialog.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
+
+    if (GetOpenFileNameA(&dialog) == TRUE) {
+        return std::string(file_buffer.data());
+    }
+#else
+    (void)title;
+    (void)initial_dir;
+#endif
+    return std::nullopt;
+}
+
+std::optional<std::string> save_file_picker(const char* title, const std::string& initial_dir) {
+#if defined(_WIN32)
+    OPENFILENAMEA dialog{};
+    std::array<char, MAX_PATH> file_buffer{};
+    const char filter[] = "JSON files (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
+    std::snprintf(file_buffer.data(), file_buffer.size(), "%s", "model.json");
+
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = filter;
+    dialog.lpstrFile = file_buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(file_buffer.size());
+    dialog.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
+    dialog.lpstrTitle = title;
+    dialog.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_EXPLORER;
+    dialog.lpstrDefExt = "json";
+
+    if (GetSaveFileNameA(&dialog) == TRUE) {
+        return std::string(file_buffer.data());
+    }
+#else
+    (void)title;
+    (void)initial_dir;
+#endif
+    return std::nullopt;
+}
+
+void update_last_model_dir(std::string& current_dir, const std::string& file_path) {
+    const std::filesystem::path path(file_path);
+    std::filesystem::path directory = path;
+    if (!path.has_extension() && !path.has_filename()) {
+        directory = path;
+    } else {
+        directory = path.parent_path();
+    }
+
+    if (!directory.empty()) {
+        current_dir = directory.string();
+    }
+}
 
 }  // namespace
 
@@ -77,7 +151,7 @@ bool Application::init() {
 
     feature_tree_panel_.set_feature_tree(&feature_tree_);
     feature_tree_panel_.set_sketch_document(&sketch_document_);
-    if (!load_feature_tree_session("session/feature_tree.json")) {
+    if (!load_model_session("session/model.json")) {
         if (const model::FeatureNode* root = feature_tree_.root()) {
             model::FeatureTreeError tree_error = model::FeatureTreeError::Ok;
             const uint32_t sketch_id = feature_tree_.create_feature(model::FeatureType::SketchFeature, "Sketch.001", root->id, &tree_error);
@@ -87,11 +161,15 @@ bool Application::init() {
                 (void)feature_tree_.create_feature(model::FeatureType::ShellFeature, "Shell.001", root->id, nullptr);
             }
         }
+
+        if (io::CameraSession::load("session/camera.json", camera_)) {
+            camera_session_loaded_ = true;
+        }
     }
 
-    if (io::CameraSession::load("session/camera.json", camera_)) {
-        camera_session_loaded_ = true;
-    }
+    const std::filesystem::path initial_model_path = std::filesystem::path(settings_.last_model_dir) / "model.json";
+    std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
+    std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", initial_model_path.string().c_str());
 
     sketch_document_.solve();
 
@@ -201,8 +279,8 @@ void Application::run() {
 }
 
 void Application::shutdown() {
-    persist_camera_session();
-    persist_feature_tree_session("session/feature_tree.json");
+    persist_model_session("session/model.json");
+    persist_settings();
     g_orchestrator.shutdown();
     shutdown_imgui();
 
@@ -221,6 +299,61 @@ void Application::shutdown() {
 
 const std::string& Application::last_error() const {
     return last_error_;
+}
+
+bool Application::load_model_session(const char* path) {
+    auto loaded = io::ModelDeserializer::from_file(path);
+    if (!loaded.has_value()) {
+        return false;
+    }
+
+    feature_tree_ = std::move(loaded.value());
+    feature_tree_panel_.set_feature_tree(&feature_tree_);
+
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        return true;
+    }
+
+    std::string data;
+    file.seekg(0, std::ios::end);
+    const std::streampos size = file.tellg();
+    if (size <= 0) {
+        return true;
+    }
+
+    data.resize(static_cast<size_t>(size));
+    file.seekg(0, std::ios::beg);
+    file.read(data.data(), static_cast<std::streamsize>(data.size()));
+    if (!file.good() && !file.eof()) {
+        return true;
+    }
+
+    const nlohmann::json root = nlohmann::json::parse(data, nullptr, false);
+    if (root.is_discarded() || !root.is_object() || !root.contains("session") || !root["session"].is_object()) {
+        return true;
+    }
+
+    const nlohmann::json& session = root["session"];
+    if (session.contains("camera") && session["camera"].is_object()) {
+        camera_session_loaded_ = camera_.from_json(session["camera"]);
+    }
+
+    return true;
+}
+
+void Application::persist_model_session(const char* path) const {
+    io::ModelSerializerOptions options{};
+    options.pretty_print = true;
+    options.model_name = "VulcanCAD Model";
+    options.units = "mm";
+    options.metadata = nlohmann::json::object();
+    options.metadata["source"] = "autosave_session";
+
+    options.session = nlohmann::json::object();
+    options.session["camera"] = camera_.to_json();
+
+    (void)io::ModelSerializer::save_to_file(path, feature_tree_, options);
 }
 
 bool Application::load_feature_tree_session(const char* path) {
@@ -274,6 +407,8 @@ bool Application::load_settings(const char* path) {
         }
     }
 
+    settings_path_ = settings_path.string();
+
     std::ifstream config_file(settings_path, std::ios::in | std::ios::binary);
     if (!config_file.is_open()) {
         last_error_ = "Could not open settings.json in current, parent, or grandparent directory";
@@ -314,7 +449,56 @@ bool Application::load_settings(const char* path) {
         settings_.vsync = window.value("vsync", settings_.vsync);
     }
 
+    if (root.contains("io") && root["io"].is_object()) {
+        const nlohmann::json& io_settings = root["io"];
+        settings_.last_model_dir = io_settings.value("last_model_dir", settings_.last_model_dir);
+    }
+
     return true;
+}
+
+void Application::persist_settings() const {
+    if (settings_path_.empty()) {
+        return;
+    }
+
+    nlohmann::json root = nlohmann::json::object();
+    {
+        std::ifstream input(settings_path_, std::ios::in | std::ios::binary);
+        if (input.is_open()) {
+            std::string data;
+            input.seekg(0, std::ios::end);
+            const std::streampos size = input.tellg();
+            if (size > 0) {
+                data.resize(static_cast<size_t>(size));
+                input.seekg(0, std::ios::beg);
+                input.read(data.data(), static_cast<std::streamsize>(data.size()));
+                const nlohmann::json parsed = nlohmann::json::parse(data, nullptr, false);
+                if (!parsed.is_discarded() && parsed.is_object()) {
+                    root = parsed;
+                }
+            }
+        }
+    }
+
+    root["width"] = settings_.width;
+    root["height"] = settings_.height;
+    root["renderer"] = settings_.renderer;
+    root["vsync"] = settings_.vsync;
+    root["io"]["last_model_dir"] = settings_.last_model_dir;
+
+    const std::filesystem::path file_path(settings_path_);
+    std::error_code error_code;
+    if (file_path.has_parent_path()) {
+        std::filesystem::create_directories(file_path.parent_path(), error_code);
+    }
+
+    std::ofstream output(settings_path_, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+        return;
+    }
+
+    output << root.dump(2);
 }
 
 bool Application::init_imgui() {
@@ -671,8 +855,13 @@ void Application::draw_menu_bar() {
 
     if (ImGui::BeginMenu("File")) {
         ImGui::MenuItem("New", "Ctrl+N");
-        ImGui::MenuItem("Open", "Ctrl+O");
+        if (ImGui::MenuItem("Open Model...", "Ctrl+O")) {
+            show_open_model_popup_ = true;
+        }
         ImGui::MenuItem("Save", "Ctrl+S");
+        if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S")) {
+            show_save_as_popup_ = true;
+        }
         ImGui::Separator();
         if (ImGui::MenuItem("Exit")) {
             running_ = false;
@@ -722,6 +911,92 @@ void Application::draw_menu_bar() {
         ImGui::MenuItem("Open AI Panel");
         ImGui::MenuItem("Submit Proposal");
         ImGui::EndMenu();
+    }
+
+    if (show_save_as_popup_) {
+        ImGui::OpenPopup("Save Model As");
+        show_save_as_popup_ = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 150.0f), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("Save Model As", nullptr, ImGuiWindowFlags_NoResize)) {
+        ImGui::InputText("Path", save_model_path_buffer_.data(), save_model_path_buffer_.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Browse##save_model")) {
+            const std::optional<std::string> picked = save_file_picker("Save model JSON", settings_.last_model_dir);
+            if (picked.has_value()) {
+                std::snprintf(save_model_path_buffer_.data(), save_model_path_buffer_.size(), "%s", picked->c_str());
+                update_last_model_dir(settings_.last_model_dir, *picked);
+                persist_settings();
+            }
+        }
+        ImGui::Checkbox("Pretty print JSON", &save_model_pretty_print_);
+        if (ImGui::Button("Save")) {
+            io::ModelSerializerOptions options{};
+            options.pretty_print = save_model_pretty_print_;
+            options.model_name = "VulcanCAD Model";
+            options.units = "mm";
+            options.metadata = nlohmann::json::object();
+            options.metadata["source"] = "File->Save As";
+            options.session = nlohmann::json::object();
+            options.session["camera"] = camera_.to_json();
+            const std::string save_path = std::string(save_model_path_buffer_.data());
+            if (!io::ModelSerializer::save_to_file(save_path, feature_tree_, options)) {
+                last_error_ = "Failed to save model JSON file";
+            } else {
+                update_last_model_dir(settings_.last_model_dir, save_path);
+                persist_settings();
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (show_open_model_popup_) {
+        ImGui::OpenPopup("Open Model JSON");
+        show_open_model_popup_ = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 170.0f), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("Open Model JSON", nullptr, ImGuiWindowFlags_NoResize)) {
+        ImGui::InputText("Path", open_model_path_buffer_.data(), open_model_path_buffer_.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Browse##open_model")) {
+            const std::optional<std::string> picked = open_file_picker("Open model JSON", settings_.last_model_dir);
+            if (picked.has_value()) {
+                std::snprintf(open_model_path_buffer_.data(), open_model_path_buffer_.size(), "%s", picked->c_str());
+                update_last_model_dir(settings_.last_model_dir, *picked);
+                persist_settings();
+            }
+        }
+        if (ImGui::Button("Load")) {
+            const std::string open_path = std::string(open_model_path_buffer_.data());
+            if (load_model_session(open_path.c_str())) {
+                update_last_model_dir(settings_.last_model_dir, open_path);
+                persist_settings();
+            } else {
+                auto loaded = io::ModelDeserializer::from_file(open_path);
+                if (loaded.has_value()) {
+                    feature_tree_ = std::move(loaded.value());
+                    feature_tree_panel_.set_feature_tree(&feature_tree_);
+                    update_last_model_dir(settings_.last_model_dir, open_path);
+                    persist_settings();
+                } else {
+                    const io::ModelError& error = loaded.error();
+                    last_error_ = error.message;
+                }
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::Separator();
+        ImGui::TextDisabled("Loads JSON and applies model to current working feature tree");
+        ImGui::EndPopup();
     }
 
     ImGui::EndMainMenuBar();

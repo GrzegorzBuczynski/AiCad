@@ -26,6 +26,8 @@ add_executable(VulcanCAD
     src/renderer/RenderFrame.cpp
     src/scene/Camera.cpp
     src/io/CameraSession.cpp
+    src/io/ModelSerializer.cpp
+    src/io/ModelDeserializer.cpp
     src/model/FeatureTree.cpp
     src/sketch/SketchEntity.cpp
     src/sketch/SketchSolver.cpp

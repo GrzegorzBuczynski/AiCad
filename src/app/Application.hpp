@@ -32,6 +32,7 @@ struct app_settings {
     uint32_t height = 900;
     std::string renderer = "vulkan";
     bool vsync = true;
+    std::string last_model_dir = "session";
 };
 
 /**
@@ -63,6 +64,7 @@ public:
 
 private:
     bool load_settings(const char* path);
+    void persist_settings() const;
     bool init_imgui();
     void shutdown_imgui();
     void build_docked_layout();
@@ -74,6 +76,8 @@ private:
     void sync_camera_to_viewport();
     void persist_camera_session() const;
     void process_feature_tree_actions();
+    bool load_model_session(const char* path);
+    void persist_model_session(const char* path) const;
     bool load_feature_tree_session(const char* path);
     void persist_feature_tree_session(const char* path) const;
     bool execute_feature_rebuild(
@@ -115,7 +119,13 @@ private:
     bool imgui_backend_initialized_ = false;
     bool camera_session_loaded_ = false;
     bool worker_retry_popup_opened_ = false;
+    bool show_save_as_popup_ = false;
+    bool show_open_model_popup_ = false;
+    bool save_model_pretty_print_ = true;
     std::optional<WorkerRetryContext> worker_retry_context_{};
+    std::array<char, 512> save_model_path_buffer_{};
+    std::array<char, 512> open_model_path_buffer_{};
+    std::string settings_path_{};
 
     std::string last_error_{};
 };
