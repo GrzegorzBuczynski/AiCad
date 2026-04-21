@@ -1,0 +1,2 @@
+
+$files = Get-ChildItem -Path "src" -Recurse -Include "*.cpp", "*.hpp", "*.h" -File; $total = 0; $files | ForEach-Object { $total += @(Get-Content $_.FullName | Measure-Object -Line).Lines }; Write-Host "Łączna liczba linii: $total"

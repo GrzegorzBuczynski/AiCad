@@ -7,6 +7,11 @@
 #include <imgui.h>
 #include <glm/glm.hpp>
 
+#if defined(VULCANCAD_HAS_OCCT)
+#include <gp_Dir.hxx>
+#include <gp_Pnt.hxx>
+#endif
+
 #include "geometry/IGeometryKernel.hpp"
 #include "model/Plane.hpp"
 #include "sketch/GridFeature.hpp"
@@ -19,6 +24,16 @@ namespace ui {
  */
 class ViewportPanel final : public Panel {
 public:
+#if defined(VULCANCAD_HAS_OCCT)
+    /**
+     * @brief OCCT-compatible world-space ray.
+     */
+    struct Ray {
+        gp_Pnt origin{};
+        gp_Dir direction{};
+    };
+#endif
+
     /**
      * @brief Sets render target texture to be displayed in viewport.
      * @param texture Vulkan-backed texture handle exposed as ImTextureID.
@@ -56,6 +71,21 @@ public:
      */
     [[nodiscard]] bool is_hovered() const;
 
+#if defined(VULCANCAD_HAS_OCCT)
+    /**
+     * @brief Builds a world-space picking ray for a mouse position in screen space.
+     * @param mouse_pos Mouse position in absolute ImGui screen coordinates.
+     * @return Ray when conversion succeeded, std::nullopt otherwise.
+     */
+    [[nodiscard]] std::optional<Ray> getClickRay(ImVec2 mouse_pos) const;
+#endif
+
+    /**
+     * @brief Sets highlighted selected-shape edge polylines.
+     * @param edges Discretized world-space edge polylines.
+     */
+    void set_selected_edges(const geometry::EdgePolylines& edges);
+
     /**
      * @brief Sets persistent sketch profiles to be shown in 3D viewport.
      * @param profiles Closed sketch profiles.
@@ -86,6 +116,7 @@ private:
     glm::mat4 projection_{};
     glm::mat4 view_projection_{};
     std::vector<geometry::Profile> sketch_profiles_{};
+    geometry::EdgePolylines selected_edges_{};
     model::Plane sketch_plane_{glm::vec3{0.0f, 0.0f, 0.0f}};
     std::optional<sketch::GridFeature> grid_feature_{};
     ImVec2 content_origin_{0.0f, 0.0f};

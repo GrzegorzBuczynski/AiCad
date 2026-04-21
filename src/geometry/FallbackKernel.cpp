@@ -142,6 +142,17 @@ AABB FallbackKernel::computeAABB(SolidHandle solid) {
     return record.bounds;
 }
 
+SolidHandle FallbackKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction) {
+    (void)origin;
+    (void)direction;
+    return k_invalid_solid_handle;
+}
+
+EdgePolylines FallbackKernel::getEdges(SolidHandle solid) {
+    (void)solid;
+    return {};
+}
+
 bool FallbackKernel::tessellateAsync(SolidHandle solid, float chord, TessellationCallback callback) {
     if (!callback) {
         return false;

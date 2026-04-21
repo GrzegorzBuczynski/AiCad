@@ -2,6 +2,10 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
+
+#include "geometry/IGeometryKernel.hpp"
+#include "geometry/OcctKernel.hpp"
 
 namespace app::ipc {
 
@@ -14,7 +18,8 @@ enum class GeometryCommand {
     RebuildFromSketch,
     Tessellate,
     UploadMesh,
-    Repaint
+    Repaint,
+    PickSolid
 };
 
 /**
@@ -25,6 +30,12 @@ struct GeometryRequest {
     uint32_t feature_id = 0U;
     bool full_rebuild = false;
     uint32_t start_feature_id = 0U;
+    double ray_origin_x = 0.0;
+    double ray_origin_y = 0.0;
+    double ray_origin_z = 0.0;
+    double ray_dir_x = 0.0;
+    double ray_dir_y = 0.0;
+    double ray_dir_z = 1.0;
 };
 
 /**
@@ -34,6 +45,9 @@ struct GeometryResponse {
     bool success = false;
     bool worker_crashed = false;
     std::string message{};
+    uint32_t hit_solid_handle = 0U;
+    uint32_t hit_feature_id = 0U;
+    geometry::EdgePolylines hit_edges{};
 };
 
 /**
@@ -61,6 +75,9 @@ public:
 
 private:
     bool running_ = false;
+    geometry::OcctKernel kernel_{};
+    std::unordered_map<uint32_t, geometry::SolidHandle> feature_solids_{};
+    std::unordered_map<geometry::SolidHandle, uint32_t> solid_features_{};
 };
 
 /**

@@ -64,6 +64,12 @@ public:
     bool consume_open_plane_properties_request();
 
     /**
+     * @brief Sets selected feature id highlighted in the tree.
+     * @param feature_id Selected feature id, or 0 to clear selection.
+     */
+    void set_selected_feature(uint32_t feature_id);
+
+    /**
      * @brief Sets panel-local font scale.
      * @param scale Requested scale factor.
      */
@@ -92,6 +98,7 @@ private:
     glm::vec2 edit_point_value_{0.0f, 0.0f};
     bool open_sketch_request_ = false;
     bool open_plane_properties_request_ = false;
+    uint32_t selected_feature_id_ = 0U;
     float font_scale_ = 1.0f;
 };
 

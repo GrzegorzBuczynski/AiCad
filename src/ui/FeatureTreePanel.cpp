@@ -41,6 +41,10 @@ bool FeatureTreePanel::consume_open_plane_properties_request() {
     return requested;
 }
 
+void FeatureTreePanel::set_selected_feature(uint32_t feature_id) {
+    selected_feature_id_ = feature_id;
+}
+
 const char* FeatureTreePanel::icon_for_type(model::FeatureType type) {
     switch (type) {
     case model::FeatureType::PartContainer:
@@ -185,6 +189,9 @@ void FeatureTreePanel::draw_feature_node(model::FeatureNode* feature) {
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
     if (feature->children.empty() && feature->type != model::FeatureType::SketchFeature) {
         flags |= ImGuiTreeNodeFlags_Leaf;
+    }
+    if (feature->id == selected_feature_id_) {
+        flags |= ImGuiTreeNodeFlags_Selected;
     }
 
     ImGui::SetNextItemOpen(feature->expanded, ImGuiCond_Always);

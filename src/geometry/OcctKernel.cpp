@@ -1,9 +1,13 @@
 #include "geometry/OcctKernel.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <thread>
 
 #if defined(VULCANCAD_HAS_OCCT)
+#include <BRepAdaptor_Curve.hxx>
+#include <BRepIntCurveSurface_Inter.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -26,6 +30,7 @@
 #include <TopoDS_Wire.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Dir.hxx>
+#include <gp_Lin.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
 #endif
@@ -224,6 +229,95 @@ AABB OcctKernel::computeAABB(SolidHandle solid) {
     };
 #else
     return fallback_.computeAABB(solid);
+#endif
+}
+
+SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction) {
+#if defined(VULCANCAD_HAS_OCCT)
+    const gp_Lin ray(origin, direction);
+    constexpr Standard_Real tolerance = 1.0e-6;
+
+    Standard_Real nearest_w = std::numeric_limits<Standard_Real>::max();
+    SolidHandle nearest_handle = k_invalid_solid_handle;
+
+    std::scoped_lock lock(shapes_mutex_);
+    for (const auto& [handle, shape] : shapes_) {
+        if (handle == k_invalid_solid_handle || shape.IsNull()) {
+            continue;
+        }
+
+        BRepIntCurveSurface_Inter intersector;
+        intersector.Init(shape, ray, tolerance);
+        while (intersector.More()) {
+            const Standard_Real w = intersector.W();
+            if (w >= 0.0 && w < nearest_w) {
+                nearest_w = w;
+                nearest_handle = handle;
+            }
+            intersector.Next();
+        }
+    }
+
+    return nearest_handle;
+#else
+    return fallback_.pickSolid(origin, direction);
+#endif
+}
+
+EdgePolylines OcctKernel::getEdges(SolidHandle solid) {
+#if defined(VULCANCAD_HAS_OCCT)
+    TopoDS_Shape shape{};
+    if (!get_shape(solid, &shape)) {
+        return {};
+    }
+
+    EdgePolylines edges{};
+    TopExp_Explorer explorer(shape, TopAbs_EDGE);
+    while (explorer.More()) {
+        const TopoDS_Edge edge = TopoDS::Edge(explorer.Current());
+        BRepAdaptor_Curve curve(edge);
+        const Standard_Real first = curve.FirstParameter();
+        const Standard_Real last = curve.LastParameter();
+
+        if (!std::isfinite(first) || !std::isfinite(last)) {
+            explorer.Next();
+            continue;
+        }
+
+        constexpr int samples = 24;
+        EdgePolyline polyline{};
+        polyline.reserve(samples + 1);
+
+        if (std::abs(last - first) < 1.0e-9) {
+            const gp_Pnt point = curve.Value(first);
+            polyline.push_back({
+                static_cast<float>(point.X()),
+                static_cast<float>(point.Y()),
+                static_cast<float>(point.Z()),
+            });
+        } else {
+            for (int i = 0; i <= samples; ++i) {
+                const Standard_Real t = static_cast<Standard_Real>(i) / static_cast<Standard_Real>(samples);
+                const Standard_Real parameter = first + (last - first) * t;
+                const gp_Pnt point = curve.Value(parameter);
+                polyline.push_back({
+                    static_cast<float>(point.X()),
+                    static_cast<float>(point.Y()),
+                    static_cast<float>(point.Z()),
+                });
+            }
+        }
+
+        if (polyline.size() >= 2U) {
+            edges.push_back(std::move(polyline));
+        }
+
+        explorer.Next();
+    }
+
+    return edges;
+#else
+    return fallback_.getEdges(solid);
 #endif
 }
 

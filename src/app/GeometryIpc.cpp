@@ -1,19 +1,41 @@
 #include "app/GeometryIpc.hpp"
 
+#include <unordered_map>
+
+#if defined(VULCANCAD_HAS_OCCT)
+#include <gp_Dir.hxx>
+#include <gp_Pnt.hxx>
+#endif
+
+#include "geometry/OcctKernel.hpp"
+
 namespace app::ipc {
+
+namespace {
+
+geometry::SolidHandle build_feature_proxy_solid(geometry::OcctKernel& kernel, uint32_t feature_id) {
+    const float base = 0.6f + static_cast<float>(feature_id % 7U) * 0.12f;
+    return kernel.createBox(base, base, base);
+}
+
+}  // namespace
 
 bool GeometryWorker::start() {
     running_ = true;
+    feature_solids_.clear();
+    solid_features_.clear();
     return true;
 }
 
 void GeometryWorker::stop() {
     running_ = false;
+    feature_solids_.clear();
+    solid_features_.clear();
 }
 
 GeometryResponse GeometryWorker::execute(const GeometryRequest& request) {
     if (!running_) {
-        return {false, true, "GeometryWorker is not running"};
+        return {false, true, "GeometryWorker is not running", 0U, 0U, {}};
     }
 
     switch (request.command) {
@@ -21,19 +43,58 @@ GeometryResponse GeometryWorker::execute(const GeometryRequest& request) {
     case GeometryCommand::Tessellate:
     case GeometryCommand::UploadMesh:
     case GeometryCommand::Repaint:
-        return {true, false, {}};
+        return {true, false, {}, 0U, 0U, {}};
 
     case GeometryCommand::RebuildFromSketch:
-        return {true, false, {}};
+        return {true, false, {}, 0U, 0U, {}};
 
-    case GeometryCommand::RebuildFeature:
+    case GeometryCommand::RebuildFeature: {
         if (!request.full_rebuild && request.feature_id == 0U && request.start_feature_id == 0U) {
-            return {false, false, "Missing feature_id/start_feature_id for partial rebuild"};
+            return {false, false, "Missing feature_id/start_feature_id for partial rebuild", 0U, 0U, {}};
         }
-        return {true, false, {}};
+
+        if (request.full_rebuild) {
+            feature_solids_.clear();
+            solid_features_.clear();
+        }
+
+        if (request.feature_id != 0U) {
+            const geometry::SolidHandle solid = build_feature_proxy_solid(kernel_, request.feature_id);
+            if (solid == geometry::k_invalid_solid_handle) {
+                return {false, false, "Failed to create proxy solid for feature", 0U, 0U, {}};
+            }
+            feature_solids_[request.feature_id] = solid;
+            solid_features_[solid] = request.feature_id;
+        }
+
+        return {true, false, {}, 0U, 0U, {}};
     }
 
-    return {false, false, "Unsupported command"};
+    case GeometryCommand::PickSolid: {
+#if defined(VULCANCAD_HAS_OCCT)
+        const gp_Pnt origin(request.ray_origin_x, request.ray_origin_y, request.ray_origin_z);
+        gp_Dir direction(0.0, 0.0, 1.0);
+        try {
+            direction = gp_Dir(request.ray_dir_x, request.ray_dir_y, request.ray_dir_z);
+        } catch (...) {
+            return {false, false, "Invalid ray direction", 0U, 0U, {}};
+        }
+
+        const geometry::SolidHandle hit = kernel_.pickSolid(origin, direction);
+        if (hit == geometry::k_invalid_solid_handle) {
+            return {true, false, {}, 0U, 0U, {}};
+        }
+
+        const auto it = solid_features_.find(hit);
+        const uint32_t hit_feature_id = it != solid_features_.end() ? it->second : 0U;
+        return {true, false, {}, hit, hit_feature_id, kernel_.getEdges(hit)};
+#else
+    return {true, false, "OCCT picker unavailable in this build", 0U, 0U, {}};
+#endif
+    }
+    }
+
+    return {false, false, "Unsupported command", 0U, 0U, {}};
 }
 
 bool MainOrchestrator::init() {

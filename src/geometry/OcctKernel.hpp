@@ -37,6 +37,8 @@ public:
     SolidHandle booleanCut(SolidHandle base, SolidHandle tool) override;
     MeshData tessellate(SolidHandle solid, float chord) override;
     AABB computeAABB(SolidHandle solid) override;
+    SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction) override;
+    EdgePolylines getEdges(SolidHandle solid) override;
     bool tessellateAsync(SolidHandle solid, float chord, TessellationCallback callback) override;
 
 private:

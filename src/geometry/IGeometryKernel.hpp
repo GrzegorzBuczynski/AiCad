@@ -6,6 +6,14 @@
 
 #include <glm/glm.hpp>
 
+#if defined(VULCANCAD_HAS_OCCT)
+#include <gp_Dir.hxx>
+#include <gp_Pnt.hxx>
+#else
+class gp_Dir;
+class gp_Pnt;
+#endif
+
 namespace geometry {
 
 using SolidHandle = uint32_t;
@@ -43,6 +51,9 @@ struct Profile {
     std::vector<glm::vec2> points{};
     bool closed = true;
 };
+
+using EdgePolyline = std::vector<glm::vec3>;
+using EdgePolylines = std::vector<EdgePolyline>;
 
 using TessellationCallback = std::function<void(MeshData)>;
 
@@ -111,6 +122,21 @@ public:
      * @return Solid bounds.
      */
     virtual AABB computeAABB(SolidHandle solid) = 0;
+
+    /**
+     * @brief Performs ray-based solid picking.
+     * @param origin Ray origin in world space.
+     * @param direction Ray direction in world space.
+     * @return Hit solid handle, or k_invalid_solid_handle when no hit.
+     */
+    virtual SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction) = 0;
+
+    /**
+     * @brief Returns discretized edge polylines for a solid.
+     * @param solid Solid handle.
+     * @return List of edge polylines, empty when unavailable.
+     */
+    virtual EdgePolylines getEdges(SolidHandle solid) = 0;
 
     /**
      * @brief Runs tessellation asynchronously on an internal thread pool.

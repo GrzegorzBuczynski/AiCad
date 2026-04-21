@@ -70,6 +70,31 @@ void draw_sketch_profiles(
     }
 }
 
+void draw_selected_edges(
+    ImDrawList* draw_list,
+    const glm::mat4& view_projection,
+    const ImVec2& origin,
+    const ImVec2& size,
+    const geometry::EdgePolylines& edges) {
+    for (const geometry::EdgePolyline& polyline : edges) {
+        if (polyline.size() < 2U) {
+            continue;
+        }
+
+        for (size_t i = 1; i < polyline.size(); ++i) {
+            draw_segment(
+                draw_list,
+                view_projection,
+                origin,
+                size,
+                polyline[i - 1U],
+                polyline[i],
+                IM_COL32(245, 140, 20, 255),
+                3.2f);
+        }
+    }
+}
+
 void draw_plane_direction_guides(
     ImDrawList* draw_list,
     const glm::mat4& view_projection,
@@ -169,6 +194,7 @@ void ViewportPanel::draw() {
         draw_plane_direction_guides(draw_list, view_projection_, content_origin_, avail, sketch_plane_);
         draw_grid_feature(draw_list, view_projection_, content_origin_, avail, grid_feature_);
         draw_sketch_profiles(draw_list, view_projection_, content_origin_, avail, sketch_profiles_, sketch_plane_);
+        draw_selected_edges(draw_list, view_projection_, content_origin_, avail, selected_edges_);
     } else {
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -211,6 +237,7 @@ void ViewportPanel::draw() {
         draw_plane_direction_guides(draw_list, view_projection_, origin, avail, sketch_plane_);
         draw_grid_feature(draw_list, view_projection_, origin, avail, grid_feature_);
         draw_sketch_profiles(draw_list, view_projection_, origin, avail, sketch_profiles_, sketch_plane_);
+        draw_selected_edges(draw_list, view_projection_, origin, avail, selected_edges_);
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 16.0f, origin.y + 16.0f));
         ImGui::TextUnformatted("Camera-driven viewport");
@@ -239,8 +266,58 @@ bool ViewportPanel::is_hovered() const {
     return hovered_;
 }
 
+#if defined(VULCANCAD_HAS_OCCT)
+std::optional<ViewportPanel::Ray> ViewportPanel::getClickRay(ImVec2 mouse_pos) const {
+    if (content_size_.x <= 1.0f || content_size_.y <= 1.0f) {
+        return std::nullopt;
+    }
+
+    const float local_x = (mouse_pos.x - content_origin_.x) / content_size_.x;
+    const float local_y = (mouse_pos.y - content_origin_.y) / content_size_.y;
+    if (local_x < 0.0f || local_x > 1.0f || local_y < 0.0f || local_y > 1.0f) {
+        return std::nullopt;
+    }
+
+    const float ndc_x = local_x * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - local_y * 2.0f;
+
+    const glm::mat4 view_projection = projection_ * view_;
+    const glm::mat4 inverse_vp = glm::inverse(view_projection);
+    const glm::vec4 near_clip{ndc_x, ndc_y, -1.0f, 1.0f};
+    const glm::vec4 far_clip{ndc_x, ndc_y, 1.0f, 1.0f};
+
+    const glm::vec4 near_world4 = inverse_vp * near_clip;
+    const glm::vec4 far_world4 = inverse_vp * far_clip;
+    if (std::abs(near_world4.w) < 1.0e-6f || std::abs(far_world4.w) < 1.0e-6f) {
+        return std::nullopt;
+    }
+
+    const glm::vec3 near_world = glm::vec3(near_world4) / near_world4.w;
+    const glm::vec3 far_world = glm::vec3(far_world4) / far_world4.w;
+    const glm::vec3 ray_vec = far_world - near_world;
+    if (glm::length(ray_vec) < 1.0e-6f) {
+        return std::nullopt;
+    }
+
+    const glm::vec3 ray_dir = glm::normalize(ray_vec);
+    return Ray{
+        gp_Pnt(
+            static_cast<double>(near_world.x),
+            static_cast<double>(near_world.y),
+            static_cast<double>(near_world.z)),
+        gp_Dir(
+            static_cast<double>(ray_dir.x),
+            static_cast<double>(ray_dir.y),
+            static_cast<double>(ray_dir.z))};
+}
+#endif
+
 void ViewportPanel::set_sketch_profiles(const std::vector<geometry::Profile>& profiles) {
     sketch_profiles_ = profiles;
+}
+
+void ViewportPanel::set_selected_edges(const geometry::EdgePolylines& edges) {
+    selected_edges_ = edges;
 }
 
 void ViewportPanel::set_sketch_plane(const model::Plane& plane) {

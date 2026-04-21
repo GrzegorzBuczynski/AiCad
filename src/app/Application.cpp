@@ -770,6 +770,34 @@ void Application::build_docked_layout() {
     viewport_panel_.set_sketch_profiles(sketch_document_.extract_preview_profiles());
 
     viewport_panel_.draw();
+
+#if defined(VULCANCAD_HAS_OCCT)
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && viewport_panel_.is_hovered()) {
+        const std::optional<ui::ViewportPanel::Ray> ray = viewport_panel_.getClickRay(ImGui::GetMousePos());
+        if (ray.has_value()) {
+            app::ipc::GeometryRequest pick_request{};
+            pick_request.command = app::ipc::GeometryCommand::PickSolid;
+            pick_request.ray_origin_x = ray->origin.X();
+            pick_request.ray_origin_y = ray->origin.Y();
+            pick_request.ray_origin_z = ray->origin.Z();
+            pick_request.ray_dir_x = ray->direction.X();
+            pick_request.ray_dir_y = ray->direction.Y();
+            pick_request.ray_dir_z = ray->direction.Z();
+
+            const app::ipc::GeometryResponse pick_response = g_orchestrator.submit_once(pick_request);
+            if (pick_response.success && feature_tree_.find_feature(pick_response.hit_feature_id) != nullptr) {
+                feature_tree_panel_.set_selected_feature(pick_response.hit_feature_id);
+                viewport_panel_.set_selected_edges(pick_response.hit_edges);
+            } else if (pick_response.success) {
+                feature_tree_panel_.set_selected_feature(0U);
+                viewport_panel_.set_selected_edges({});
+            } else {
+                viewport_panel_.set_selected_edges({});
+            }
+        }
+    }
+#endif
+
     properties_panel_.draw();
 
     process_feature_tree_actions();
