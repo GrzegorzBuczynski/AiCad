@@ -104,6 +104,22 @@ SolidHandle FallbackKernel::createRevolve(const Profile& profile, float ang) {
     return create_record(bounds);
 }
 
+SolidHandle FallbackKernel::createEdge(const glm::vec3& a, const glm::vec3& b) {
+    const AABB bounds{
+        {
+            std::min(a.x, b.x),
+            std::min(a.y, b.y),
+            std::min(a.z, b.z),
+        },
+        {
+            std::max(a.x, b.x),
+            std::max(a.y, b.y),
+            std::max(a.z, b.z),
+        },
+    };
+    return create_record(bounds);
+}
+
 SolidHandle FallbackKernel::booleanUnion(SolidHandle a, SolidHandle b) {
     SolidRecord first{};
     SolidRecord second{};
@@ -142,9 +158,10 @@ AABB FallbackKernel::computeAABB(SolidHandle solid) {
     return record.bounds;
 }
 
-SolidHandle FallbackKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction) {
+SolidHandle FallbackKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction, double edge_tolerance_mm) {
     (void)origin;
     (void)direction;
+    (void)edge_tolerance_mm;
     return k_invalid_solid_handle;
 }
 

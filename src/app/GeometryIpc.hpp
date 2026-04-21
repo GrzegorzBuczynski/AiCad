@@ -3,11 +3,21 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "geometry/IGeometryKernel.hpp"
 #include "geometry/OcctKernel.hpp"
 
 namespace app::ipc {
+
+struct SketchSegment {
+    double ax = 0.0;
+    double ay = 0.0;
+    double az = 0.0;
+    double bx = 0.0;
+    double by = 0.0;
+    double bz = 0.0;
+};
 
 /**
  * @brief GeometryWorker command set used by typed IPC contract.
@@ -36,6 +46,8 @@ struct GeometryRequest {
     double ray_dir_x = 0.0;
     double ray_dir_y = 0.0;
     double ray_dir_z = 1.0;
+    double edge_tolerance_mm = 0.01;
+    std::vector<SketchSegment> sketch_segments{};
 };
 
 /**

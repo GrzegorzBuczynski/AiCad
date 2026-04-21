@@ -46,6 +46,24 @@ GeometryResponse GeometryWorker::execute(const GeometryRequest& request) {
         return {true, false, {}, 0U, 0U, {}};
 
     case GeometryCommand::RebuildFromSketch:
+        for (const SketchSegment& segment : request.sketch_segments) {
+            const glm::vec3 a{
+                static_cast<float>(segment.ax),
+                static_cast<float>(segment.ay),
+                static_cast<float>(segment.az),
+            };
+            const glm::vec3 b{
+                static_cast<float>(segment.bx),
+                static_cast<float>(segment.by),
+                static_cast<float>(segment.bz),
+            };
+
+            const geometry::SolidHandle edge_handle = kernel_.createEdge(a, b);
+            if (edge_handle == geometry::k_invalid_solid_handle) {
+                continue;
+            }
+            solid_features_[edge_handle] = 0U;
+        }
         return {true, false, {}, 0U, 0U, {}};
 
     case GeometryCommand::RebuildFeature: {
@@ -80,7 +98,7 @@ GeometryResponse GeometryWorker::execute(const GeometryRequest& request) {
             return {false, false, "Invalid ray direction", 0U, 0U, {}};
         }
 
-        const geometry::SolidHandle hit = kernel_.pickSolid(origin, direction);
+        const geometry::SolidHandle hit = kernel_.pickSolid(origin, direction, request.edge_tolerance_world);
         if (hit == geometry::k_invalid_solid_handle) {
             return {true, false, {}, 0U, 0U, {}};
         }

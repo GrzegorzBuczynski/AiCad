@@ -81,6 +81,14 @@ public:
 #endif
 
     /**
+     * @brief Estimates world-space tolerance corresponding to a given pixel radius.
+     * @param mouse_pos Mouse position in absolute ImGui screen coordinates.
+     * @param pixels Pixel radius around cursor.
+     * @return World-space tolerance length.
+     */
+    [[nodiscard]] float estimate_pick_tolerance_world(ImVec2 mouse_pos, float pixels) const;
+
+    /**
      * @brief Sets highlighted selected-shape edge polylines.
      * @param edges Discretized world-space edge polylines.
      */

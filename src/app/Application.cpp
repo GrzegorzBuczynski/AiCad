@@ -59,6 +59,38 @@ struct GeometryExportBundle {
     std::optional<uint32_t> plane_feature_id{};
 };
 
+std::vector<app::ipc::SketchSegment> build_sketch_segments_for_ipc(const sketch::SketchDocument& sketch_document) {
+    constexpr float k_mm_to_world = 0.02f;
+
+    const model::Plane& plane = sketch_document.plane();
+    const glm::vec3 normal = glm::normalize(glm::length(plane.normal) < 1.0e-6f ? glm::vec3{0.0f, 0.0f, 1.0f} : plane.normal);
+    const glm::vec3 helper = std::abs(normal.z) > 0.9f ? glm::vec3{0.0f, 1.0f, 0.0f} : glm::vec3{0.0f, 0.0f, 1.0f};
+    const glm::vec3 u = glm::normalize(glm::cross(helper, normal));
+    const glm::vec3 v = glm::normalize(glm::cross(normal, u));
+
+    std::vector<app::ipc::SketchSegment> segments{};
+    for (const sketch::SketchEntity& entity : sketch_document.entities()) {
+        const auto* line = std::get_if<sketch::LineEntity>(&entity.data);
+        if (line == nullptr) {
+            continue;
+        }
+
+        const glm::vec3 a_world = plane.origin + u * (line->p1.x * k_mm_to_world) + v * (line->p1.y * k_mm_to_world);
+        const glm::vec3 b_world = plane.origin + u * (line->p2.x * k_mm_to_world) + v * (line->p2.y * k_mm_to_world);
+
+        segments.push_back(app::ipc::SketchSegment{
+            static_cast<double>(a_world.x),
+            static_cast<double>(a_world.y),
+            static_cast<double>(a_world.z),
+            static_cast<double>(b_world.x),
+            static_cast<double>(b_world.y),
+            static_cast<double>(b_world.z),
+        });
+    }
+
+    return segments;
+}
+
 GeometryExportBundle build_geometry_export_bundle(const sketch::SketchDocument& sketch_document, uint32_t start_id) {
     GeometryExportBundle bundle{};
     uint32_t next_id = start_id;
@@ -349,13 +381,12 @@ void Application::run() {
             }
 
             if (sketch_document_.is_active() && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
+                const std::vector<app::ipc::SketchSegment> sketch_segments = build_sketch_segments_for_ipc(sketch_document_);
                 sketch_document_.exit();
-                (void)g_orchestrator.submit_once(app::ipc::GeometryRequest{
-                    app::ipc::GeometryCommand::RebuildFromSketch,
-                    0U,
-                    false,
-                    0U,
-                });
+                app::ipc::GeometryRequest request{};
+                request.command = app::ipc::GeometryCommand::RebuildFromSketch;
+                request.sketch_segments = sketch_segments;
+                (void)g_orchestrator.submit_once(request);
             }
 
             if (event.type == SDL_EVENT_QUIT) {
@@ -783,6 +814,8 @@ void Application::build_docked_layout() {
             pick_request.ray_dir_x = ray->direction.X();
             pick_request.ray_dir_y = ray->direction.Y();
             pick_request.ray_dir_z = ray->direction.Z();
+            pick_request.edge_tolerance_world = static_cast<double>(
+                viewport_panel_.estimate_pick_tolerance_world(ImGui::GetMousePos(), 5.0f));
 
             const app::ipc::GeometryResponse pick_response = g_orchestrator.submit_once(pick_request);
             if (pick_response.success && feature_tree_.find_feature(pick_response.hit_feature_id) != nullptr) {

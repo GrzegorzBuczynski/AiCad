@@ -93,6 +93,14 @@ public:
     virtual SolidHandle createRevolve(const Profile& profile, float ang) = 0;
 
     /**
+     * @brief Creates a linear edge primitive from two world-space points.
+     * @param a Start point.
+     * @param b End point.
+     * @return Opaque solid handle, or k_invalid_solid_handle on failure.
+     */
+    virtual SolidHandle createEdge(const glm::vec3& a, const glm::vec3& b) = 0;
+
+    /**
      * @brief Creates a union of two solids.
      * @param a First solid handle.
      * @param b Second solid handle.
@@ -129,7 +137,7 @@ public:
      * @param direction Ray direction in world space.
      * @return Hit solid handle, or k_invalid_solid_handle when no hit.
      */
-    virtual SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction) = 0;
+    virtual SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction, double edge_tolerance_mm) = 0;
 
     /**
      * @brief Returns discretized edge polylines for a solid.

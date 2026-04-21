@@ -33,11 +33,12 @@ public:
     SolidHandle createBox(float w, float h, float d) override;
     SolidHandle createExtrude(const Profile& profile, float d) override;
     SolidHandle createRevolve(const Profile& profile, float ang) override;
+    SolidHandle createEdge(const glm::vec3& a, const glm::vec3& b) override;
     SolidHandle booleanUnion(SolidHandle a, SolidHandle b) override;
     SolidHandle booleanCut(SolidHandle base, SolidHandle tool) override;
     MeshData tessellate(SolidHandle solid, float chord) override;
     AABB computeAABB(SolidHandle solid) override;
-    SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction) override;
+    SolidHandle pickSolid(const gp_Pnt& origin, const gp_Dir& direction, double edge_tolerance_mm) override;
     EdgePolylines getEdges(SolidHandle solid) override;
     bool tessellateAsync(SolidHandle solid, float chord, TessellationCallback callback) override;
 

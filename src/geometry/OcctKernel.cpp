@@ -6,6 +6,8 @@
 #include <thread>
 
 #if defined(VULCANCAD_HAS_OCCT)
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <Extrema_ExtFlag.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepIntCurveSurface_Inter.hxx>
 #include <BRepAlgoAPI_Common.hxx>
@@ -105,6 +107,17 @@ SolidHandle OcctKernel::createRevolve(const Profile& profile, float ang) {
     return store_shape(revolved);
 #else
     return fallback_.createRevolve(profile, ang);
+#endif
+}
+
+SolidHandle OcctKernel::createEdge(const glm::vec3& a, const glm::vec3& b) {
+#if defined(VULCANCAD_HAS_OCCT)
+    const gp_Pnt a_point(a.x, a.y, a.z);
+    const gp_Pnt b_point(b.x, b.y, b.z);
+    const TopoDS_Edge edge = BRepBuilderAPI_MakeEdge(a_point, b_point).Edge();
+    return store_shape(edge);
+#else
+    return fallback_.createEdge(a, b);
 #endif
 }
 
@@ -232,10 +245,18 @@ AABB OcctKernel::computeAABB(SolidHandle solid) {
 #endif
 }
 
-SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction) {
+SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction, double edge_tolerance_world) {
 #if defined(VULCANCAD_HAS_OCCT)
     const gp_Lin ray(origin, direction);
+    const gp_Pnt ray_end(
+        origin.X() + direction.X() * 10000.0,
+        origin.Y() + direction.Y() * 10000.0,
+        origin.Z() + direction.Z() * 10000.0);
+    const TopoDS_Edge ray_edge = BRepBuilderAPI_MakeEdge(origin, ray_end).Edge();
     constexpr Standard_Real tolerance = 1.0e-6;
+    const Standard_Real edge_tolerance = std::max<Standard_Real>(
+        static_cast<Standard_Real>(edge_tolerance_world),
+        1.0e-4);
 
     Standard_Real nearest_w = std::numeric_limits<Standard_Real>::max();
     SolidHandle nearest_handle = k_invalid_solid_handle;
@@ -246,21 +267,59 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction)
             continue;
         }
 
+        // Check if shape is an edge or wire (sketch geometry) - use dedicated tolerance
+        if (shape.ShapeType() == TopAbs_EDGE || shape.ShapeType() == TopAbs_WIRE) {
+            BRepExtrema_DistShapeShape distCalc(shape, ray_edge, Extrema_ExtFlag_MIN);
+            if (distCalc.IsDone() && distCalc.Value() < edge_tolerance) {
+                const gp_Pnt hit_point = distCalc.PointOnShape2(1);
+                const gp_Vec to_hit(origin, hit_point);
+                const Standard_Real w = to_hit.Dot(gp_Vec(direction));
+                if (w >= 0.0 && w < nearest_w) {
+                    nearest_w = w;
+                    nearest_handle = handle;
+                }
+            }
+            continue;
+        }
+
+        // For solid shapes, try face intersection first
         BRepIntCurveSurface_Inter intersector;
         intersector.Init(shape, ray, tolerance);
+        bool shape_hit = false;
         while (intersector.More()) {
             const Standard_Real w = intersector.W();
             if (w >= 0.0 && w < nearest_w) {
                 nearest_w = w;
                 nearest_handle = handle;
+                shape_hit = true;
             }
             intersector.Next();
+        }
+
+        // If no face hit, check edges of composite shape
+        if (!shape_hit) {
+            TopExp_Explorer edge_explorer(shape, TopAbs_EDGE);
+            while (edge_explorer.More()) {
+                const TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
+                BRepExtrema_DistShapeShape distCalc(edge, ray_edge, Extrema_ExtFlag_MIN);
+                if (distCalc.IsDone() && distCalc.Value() < edge_tolerance) {
+                    const gp_Pnt hit_point = distCalc.PointOnShape2(1);
+                    const gp_Vec to_hit(origin, hit_point);
+                    const Standard_Real w = to_hit.Dot(gp_Vec(direction));
+                    if (w >= 0.0 && w < nearest_w) {
+                        nearest_w = w;
+                        nearest_handle = handle;
+                        break;
+                    }
+                }
+                edge_explorer.Next();
+            }
         }
     }
 
     return nearest_handle;
 #else
-    return fallback_.pickSolid(origin, direction);
+    return fallback_.pickSolid(origin, direction, edge_tolerance_world);
 #endif
 }
 
