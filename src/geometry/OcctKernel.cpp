@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <thread>
+#include <iostream>
 
 #if defined(VULCANCAD_HAS_OCCT)
 #include <BRepExtrema_DistShapeShape.hxx>
@@ -247,6 +248,10 @@ AABB OcctKernel::computeAABB(SolidHandle solid) {
 
 SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction, double edge_tolerance_world) {
 #if defined(VULCANCAD_HAS_OCCT)
+    std::cout << "[PICK] pickSolid called - origin: (" << origin.X() << ", " << origin.Y() << ", " << origin.Z()
+              << "), dir: (" << direction.X() << ", " << direction.Y() << ", " << direction.Z()
+              << "), edge_tolerance: " << edge_tolerance_world << " mm" << std::endl;
+
     const gp_Lin ray(origin, direction);
     const gp_Pnt ray_end(
         origin.X() + direction.X() * 10000.0,
@@ -258,22 +263,40 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
         static_cast<Standard_Real>(edge_tolerance_world),
         1.0e-4);
 
+    std::cout << "[PICK] Computed edge_tolerance: " << edge_tolerance << std::endl;
+
     Standard_Real nearest_w = std::numeric_limits<Standard_Real>::max();
     SolidHandle nearest_handle = k_invalid_solid_handle;
 
     std::scoped_lock lock(shapes_mutex_);
+    std::cout << "[PICK] Total shapes in map: " << shapes_.size() << std::endl;
+
     for (const auto& [handle, shape] : shapes_) {
         if (handle == k_invalid_solid_handle || shape.IsNull()) {
             continue;
         }
 
+        const TopAbs_ShapeEnum shape_type = shape.ShapeType();
+        std::cout << "[PICK] Checking handle=" << handle << ", shape_type=" << shape_type << std::endl;
+
         // Check if shape is an edge or wire (sketch geometry) - use dedicated tolerance
-        if (shape.ShapeType() == TopAbs_EDGE || shape.ShapeType() == TopAbs_WIRE) {
+        if (shape_type == TopAbs_EDGE || shape_type == TopAbs_WIRE) {
             BRepExtrema_DistShapeShape distCalc(shape, ray_edge, Extrema_ExtFlag_MIN);
+            distCalc.Perform();
+            std::cout << "[PICK] Edge/Wire distance check: handle=" << handle
+                      << ", is_done=" << distCalc.IsDone()
+                      << ", nb_solutions=" << distCalc.NbSolution();
+            if (distCalc.IsDone() && distCalc.NbSolution() > 0) {
+                std::cout << ", distance=" << distCalc.Value();
+            }
+            std::cout << std::endl;
+
             if (distCalc.IsDone() && distCalc.Value() < edge_tolerance) {
                 const gp_Pnt hit_point = distCalc.PointOnShape2(1);
                 const gp_Vec to_hit(origin, hit_point);
                 const Standard_Real w = to_hit.Dot(gp_Vec(direction));
+                std::cout << "[PICK] Edge/Wire HIT! handle=" << handle << ", distance=" << distCalc.Value()
+                          << ", w=" << w << std::endl;
                 if (w >= 0.0 && w < nearest_w) {
                     nearest_w = w;
                     nearest_handle = handle;
@@ -296,12 +319,23 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
             intersector.Next();
         }
 
+        if (shape_hit) {
+            std::cout << "[PICK] Face HIT! handle=" << handle << ", w=" << nearest_w << std::endl;
+        }
+
         // If no face hit, check edges of composite shape
         if (!shape_hit) {
             TopExp_Explorer edge_explorer(shape, TopAbs_EDGE);
+            int edge_count = 0;
             while (edge_explorer.More()) {
                 const TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
                 BRepExtrema_DistShapeShape distCalc(edge, ray_edge, Extrema_ExtFlag_MIN);
+                distCalc.Perform();
+                if (distCalc.IsDone() && distCalc.NbSolution() > 0) {
+                    std::cout << "[PICK] Solid edge distance: handle=" << handle
+                              << ", edge_idx=" << edge_count
+                              << ", distance=" << distCalc.Value() << std::endl;
+                }
                 if (distCalc.IsDone() && distCalc.Value() < edge_tolerance) {
                     const gp_Pnt hit_point = distCalc.PointOnShape2(1);
                     const gp_Vec to_hit(origin, hit_point);
@@ -309,14 +343,17 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
                     if (w >= 0.0 && w < nearest_w) {
                         nearest_w = w;
                         nearest_handle = handle;
+                        std::cout << "[PICK] Solid edge HIT! handle=" << handle << ", w=" << w << std::endl;
                         break;
                     }
                 }
                 edge_explorer.Next();
+                ++edge_count;
             }
         }
     }
 
+    std::cout << "[PICK] Final result: handle=" << nearest_handle << ", w=" << nearest_w << std::endl;
     return nearest_handle;
 #else
     return fallback_.pickSolid(origin, direction, edge_tolerance_world);

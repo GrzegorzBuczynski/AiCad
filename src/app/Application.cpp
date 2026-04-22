@@ -1,4 +1,13 @@
+#if defined(_WIN32)
+#define NOMINMAX
+#include <windows.h>
+#include <commctrl.h>
+#include <commdlg.h>
+#endif
+
 #include "app/Application.hpp"
+
+#include <iostream>
 
 #include <algorithm>
 #include <cstdio>
@@ -8,12 +17,6 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-
-#if defined(_WIN32)
-#define NOMINMAX
-#include <windows.h>
-#include <commdlg.h>
-#endif
 
 #include <SDL3/SDL.h>
 #include <imgui_impl_sdl3.h>
@@ -814,19 +817,27 @@ void Application::build_docked_layout() {
             pick_request.ray_dir_x = ray->direction.X();
             pick_request.ray_dir_y = ray->direction.Y();
             pick_request.ray_dir_z = ray->direction.Z();
-            pick_request.edge_tolerance_world = static_cast<double>(
-                viewport_panel_.estimate_pick_tolerance_world(ImGui::GetMousePos(), 5.0f));
+            // Use a fixed tolerance of 15mm for sketch edge selection
+            pick_request.edge_tolerance_mm = 15.0;
 
             const app::ipc::GeometryResponse pick_response = g_orchestrator.submit_once(pick_request);
-            if (pick_response.success && feature_tree_.find_feature(pick_response.hit_feature_id) != nullptr) {
+
+            if (pick_response.success && pick_response.hit_solid_handle != geometry::k_invalid_solid_handle) {
+                std::cout << "[APP] Picked solid handle=" << pick_response.hit_solid_handle
+                          << ", feature_id=" << pick_response.hit_feature_id << std::endl;
                 feature_tree_panel_.set_selected_feature(pick_response.hit_feature_id);
                 viewport_panel_.set_selected_edges(pick_response.hit_edges);
             } else if (pick_response.success) {
+                std::cout << "[APP] Hit solid but feature " << pick_response.hit_feature_id
+                          << " not found in tree - clearing selection" << std::endl;
                 feature_tree_panel_.set_selected_feature(0U);
                 viewport_panel_.set_selected_edges({});
             } else {
+                std::cout << "[APP] Pick failed - no hit" << std::endl;
                 viewport_panel_.set_selected_edges({});
             }
+        } else {
+            std::cout << "[APP] Click detected but getClickRay returned nullopt" << std::endl;
         }
     }
 #endif

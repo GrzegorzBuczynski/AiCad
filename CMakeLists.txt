@@ -87,6 +87,18 @@ if(OCCT_FOUND)
     if(DEFINED OCCT_LIBRARIES)
         target_link_libraries(VulcanCAD PRIVATE ${OCCT_LIBRARIES})
     endif()
+
+    if(WIN32)
+        # Copy OCCT DLLs to build output directory
+        file(GLOB OCCT_DLLS "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/bin/*.dll")
+        foreach(dll ${OCCT_DLLS})
+            add_custom_command(TARGET VulcanCAD POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${dll}"
+                    "$<TARGET_FILE_DIR:VulcanCAD>/"
+            )
+        endforeach()
+    endif()
 endif()
 
 if(USE_DX12)
