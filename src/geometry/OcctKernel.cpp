@@ -265,8 +265,13 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
 
     std::cout << "[PICK] Computed edge_tolerance: " << edge_tolerance << std::endl;
 
+    // For edge picking: track the closest edge by distance
+    Standard_Real nearest_edge_distance = std::numeric_limits<Standard_Real>::max();
+    SolidHandle nearest_edge_handle = k_invalid_solid_handle;
+
+    // For solid picking: track by w parameter along ray
     Standard_Real nearest_w = std::numeric_limits<Standard_Real>::max();
-    SolidHandle nearest_handle = k_invalid_solid_handle;
+    SolidHandle nearest_solid_handle = k_invalid_solid_handle;
 
     std::scoped_lock lock(shapes_mutex_);
     std::cout << "[PICK] Total shapes in map: " << shapes_.size() << std::endl;
@@ -279,7 +284,7 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
         const TopAbs_ShapeEnum shape_type = shape.ShapeType();
         std::cout << "[PICK] Checking handle=" << handle << ", shape_type=" << shape_type << std::endl;
 
-        // Check if shape is an edge or wire (sketch geometry) - use dedicated tolerance
+        // Check if shape is an edge or wire (sketch geometry) - pick by minimum distance
         if (shape_type == TopAbs_EDGE || shape_type == TopAbs_WIRE) {
             BRepExtrema_DistShapeShape distCalc(shape, ray_edge, Extrema_ExtFlag_MIN);
             distCalc.Perform();
@@ -292,14 +297,10 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
             std::cout << std::endl;
 
             if (distCalc.IsDone() && distCalc.Value() < edge_tolerance) {
-                const gp_Pnt hit_point = distCalc.PointOnShape2(1);
-                const gp_Vec to_hit(origin, hit_point);
-                const Standard_Real w = to_hit.Dot(gp_Vec(direction));
-                std::cout << "[PICK] Edge/Wire HIT! handle=" << handle << ", distance=" << distCalc.Value()
-                          << ", w=" << w << std::endl;
-                if (w >= 0.0 && w < nearest_w) {
-                    nearest_w = w;
-                    nearest_handle = handle;
+                std::cout << "[PICK] Edge/Wire HIT! handle=" << handle << ", distance=" << distCalc.Value() << std::endl;
+                if (distCalc.Value() < nearest_edge_distance) {
+                    nearest_edge_distance = distCalc.Value();
+                    nearest_edge_handle = handle;
                 }
             }
             continue;
@@ -313,7 +314,7 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
             const Standard_Real w = intersector.W();
             if (w >= 0.0 && w < nearest_w) {
                 nearest_w = w;
-                nearest_handle = handle;
+                nearest_solid_handle = handle;
                 shape_hit = true;
             }
             intersector.Next();
@@ -342,7 +343,7 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
                     const Standard_Real w = to_hit.Dot(gp_Vec(direction));
                     if (w >= 0.0 && w < nearest_w) {
                         nearest_w = w;
-                        nearest_handle = handle;
+                        nearest_solid_handle = handle;
                         std::cout << "[PICK] Solid edge HIT! handle=" << handle << ", w=" << w << std::endl;
                         break;
                     }
@@ -353,8 +354,13 @@ SolidHandle OcctKernel::pickSolid(const gp_Pnt& origin, const gp_Dir& direction,
         }
     }
 
-    std::cout << "[PICK] Final result: handle=" << nearest_handle << ", w=" << nearest_w << std::endl;
-    return nearest_handle;
+    // Prefer edge hit (closest by distance) over solid hit (closest by w)
+    if (nearest_edge_handle != k_invalid_solid_handle) {
+        std::cout << "[PICK] Final result: handle=" << nearest_edge_handle << " (edge, distance=" << nearest_edge_distance << ")" << std::endl;
+        return nearest_edge_handle;
+    }
+    std::cout << "[PICK] Final result: handle=" << nearest_solid_handle << " (solid, w=" << nearest_w << ")" << std::endl;
+    return nearest_solid_handle;
 #else
     return fallback_.pickSolid(origin, direction, edge_tolerance_world);
 #endif

@@ -274,7 +274,11 @@ float ViewportPanel::estimate_pick_tolerance_world(ImVec2 mouse_pos, float pixel
     const glm::mat4 view_projection = projection_ * view_;
     const glm::mat4 inverse_vp = glm::inverse(view_projection);
 
-    const auto screen_to_world_near = [&](ImVec2 screen, glm::vec3* out_world) -> bool {
+    // Use a representative depth (middle of view frustum) instead of near clip plane
+    // This gives a more realistic world tolerance for typical geometry positions
+    const float depth_z = 0.0f;  // NDC z=0 is middle of frustum
+
+    const auto screen_to_world_at_depth = [&](ImVec2 screen, float z_ndc, glm::vec3* out_world) -> bool {
         const float local_x = (screen.x - content_origin_.x) / content_size_.x;
         const float local_y = (screen.y - content_origin_.y) / content_size_.y;
         if (local_x < 0.0f || local_x > 1.0f || local_y < 0.0f || local_y > 1.0f) {
@@ -283,8 +287,8 @@ float ViewportPanel::estimate_pick_tolerance_world(ImVec2 mouse_pos, float pixel
 
         const float ndc_x = local_x * 2.0f - 1.0f;
         const float ndc_y = 1.0f - local_y * 2.0f;
-        const glm::vec4 near_clip{ndc_x, ndc_y, -1.0f, 1.0f};
-        const glm::vec4 world4 = inverse_vp * near_clip;
+        const glm::vec4 clip{ndc_x, ndc_y, z_ndc, 1.0f};
+        const glm::vec4 world4 = inverse_vp * clip;
         if (std::abs(world4.w) < 1.0e-6f) {
             return false;
         }
@@ -295,16 +299,16 @@ float ViewportPanel::estimate_pick_tolerance_world(ImVec2 mouse_pos, float pixel
 
     glm::vec3 center_world{0.0f};
     glm::vec3 offset_world{0.0f};
-    if (!screen_to_world_near(mouse_pos, &center_world)) {
+    if (!screen_to_world_at_depth(mouse_pos, depth_z, &center_world)) {
         return 0.01f;
     }
 
     ImVec2 offset_mouse = mouse_pos;
     offset_mouse.x += pixels;
-    if (!screen_to_world_near(offset_mouse, &offset_world)) {
+    if (!screen_to_world_at_depth(offset_mouse, depth_z, &offset_world)) {
         offset_mouse = mouse_pos;
         offset_mouse.y += pixels;
-        if (!screen_to_world_near(offset_mouse, &offset_world)) {
+        if (!screen_to_world_at_depth(offset_mouse, depth_z, &offset_world)) {
             return 0.01f;
         }
     }

@@ -817,8 +817,10 @@ void Application::build_docked_layout() {
             pick_request.ray_dir_x = ray->direction.X();
             pick_request.ray_dir_y = ray->direction.Y();
             pick_request.ray_dir_z = ray->direction.Z();
-            // Use a fixed tolerance of 15mm for sketch edge selection
-            pick_request.edge_tolerance_mm = 15.0;
+            // Use zoom-dependent tolerance: 500 pixels converted to world units
+            // at the middle of the view frustum (NDC z=0), scaling with zoom level
+            pick_request.edge_tolerance_mm = static_cast<double>(
+                viewport_panel_.estimate_pick_tolerance_world(ImGui::GetMousePos(), 500.0f));
 
             const app::ipc::GeometryResponse pick_response = g_orchestrator.submit_once(pick_request);
 
