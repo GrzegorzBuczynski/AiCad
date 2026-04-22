@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include <imgui.h>
@@ -38,6 +39,17 @@ glm::vec2 world_to_mm(const Plane& plane, const PlaneBasis& basis, const glm::ve
         glm::dot(offset, basis.u) * k_world_to_mm,
         glm::dot(offset, basis.v) * k_world_to_mm,
     };
+}
+
+glm::vec2 closest_point_on_segment(const glm::vec2& p, const glm::vec2& a, const glm::vec2& b) {
+    const glm::vec2 ab = b - a;
+    const float ab_len2 = glm::dot(ab, ab);
+    if (ab_len2 <= 1.0e-8f) {
+        return a;
+    }
+
+    const float t = std::clamp(glm::dot(p - a, ab) / ab_len2, 0.0f, 1.0f);
+    return a + ab * t;
 }
 
 }  // namespace
@@ -105,7 +117,8 @@ SketchView::SnapResult SketchView::compute_snap(
     const ImVec2& origin,
     const ImVec2& size,
     const glm::mat4& view_projection,
-    const ImVec2& mouse) const {
+    const ImVec2& mouse,
+    bool allow_snap) const {
     SnapResult result{};
     const Plane& plane = document.plane();
     const auto mouse_mm = screen_to_sketch_mm(origin, size, view_projection, plane, mouse);
@@ -115,7 +128,41 @@ SketchView::SnapResult SketchView::compute_snap(
 
     result.world = *mouse_mm;
 
-    if (document.snap_enabled()) {
+    const auto snap_priority = [](SnapKind kind) {
+        switch (kind) {
+        case SnapKind::Endpoint:
+            return 0;
+        case SnapKind::Segment:
+            return 1;
+        case SnapKind::External:
+            return 2;
+        case SnapKind::Grid:
+            return 3;
+        case SnapKind::None:
+        default:
+            return 99;
+        }
+    };
+
+    int best_priority = snap_priority(SnapKind::None);
+    float best_dist = std::numeric_limits<float>::max();
+    const auto try_snap_candidate = [&](const glm::vec2& candidate, SnapKind kind) {
+        const ImVec2 candidate_screen = world_to_screen(origin, size, view_projection, plane, candidate);
+        const float d = std::hypot(mouse.x - candidate_screen.x, mouse.y - candidate_screen.y);
+        if (d > k_snap_pixels) {
+            return;
+        }
+
+        const int candidate_priority = snap_priority(kind);
+        if (candidate_priority < best_priority || (candidate_priority == best_priority && d < best_dist)) {
+            best_priority = candidate_priority;
+            best_dist = d;
+            result.world = candidate;
+            result.kind = kind;
+        }
+    };
+
+    if (allow_snap && snap_to_grid_) {
         float minor_step = 1.0f;
         if (const GridFeature* grid = document.active_grid_feature()) {
             minor_step = std::max(grid->minor_step_mm, 0.001f);
@@ -125,24 +172,37 @@ SketchView::SnapResult SketchView::compute_snap(
         snapped_grid.x = std::round(snapped_grid.x / minor_step) * minor_step;
         snapped_grid.y = std::round(snapped_grid.y / minor_step) * minor_step;
 
-        const ImVec2 grid_screen = world_to_screen(origin, size, view_projection, plane, snapped_grid);
-        const float grid_dist = std::hypot(mouse.x - grid_screen.x, mouse.y - grid_screen.y);
-        if (grid_dist <= k_snap_pixels) {
-            result.world = snapped_grid;
-            result.snapped_to_grid = true;
+        try_snap_candidate(snapped_grid, SnapKind::Grid);
+    }
+
+    for (const SketchEntity& entity : document.entities()) {
+        if (allow_snap && snap_to_endpoints_) {
+            const std::vector<glm::vec2> points = control_points(entity);
+            for (const glm::vec2& point : points) {
+                try_snap_candidate(point, SnapKind::Endpoint);
+            }
+        }
+
+        if (allow_snap && snap_to_segments_) {
+            if (const auto* line = std::get_if<LineEntity>(&entity.data)) {
+            const glm::vec2 candidate = closest_point_on_segment(result.world, line->p1, line->p2);
+            try_snap_candidate(candidate, SnapKind::Segment);
+            }
         }
     }
 
-    float best_dist = k_snap_pixels;
-    for (const SketchEntity& entity : document.entities()) {
-        const std::vector<glm::vec2> points = control_points(entity);
-        for (const glm::vec2& point : points) {
-            const ImVec2 point_screen = world_to_screen(origin, size, view_projection, plane, point);
-            const float d = std::hypot(mouse.x - point_screen.x, mouse.y - point_screen.y);
-            if (d <= best_dist) {
-                best_dist = d;
-                result.world = point;
-                result.snapped_to_entity = true;
+    if (allow_snap && snap_to_external_ && !external_snap_edges_.empty()) {
+        const PlaneBasis basis = make_basis(plane.normal);
+        for (const geometry::EdgePolyline& polyline : external_snap_edges_) {
+            if (polyline.size() < 2U) {
+                continue;
+            }
+
+            for (size_t i = 1; i < polyline.size(); ++i) {
+                const glm::vec2 a = world_to_mm(plane, basis, polyline[i - 1U]);
+                const glm::vec2 b = world_to_mm(plane, basis, polyline[i]);
+                const glm::vec2 candidate = closest_point_on_segment(result.world, a, b);
+                try_snap_candidate(candidate, SnapKind::External);
             }
         }
     }
@@ -159,6 +219,90 @@ void SketchView::request_sync_plane_editor_from_document() {
     sync_plane_editor_from_document_ = true;
 }
 
+bool SketchView::blocks_3d_picking() const {
+    return active_tool_ == Tool::Line;
+}
+
+void SketchView::set_external_snap_edges(const geometry::EdgePolylines& edges) {
+    external_snap_edges_ = edges;
+}
+
+void SketchView::draw_toolbar(SketchDocument& document, const ImVec2& viewport_origin) {
+    if (!document.is_active()) {
+        return;
+    }
+
+    if (!toolbar_window_initialized_) {
+        ImGui::SetNextWindowPos(ImVec2(viewport_origin.x + 16.0f, viewport_origin.y + 16.0f), ImGuiCond_FirstUseEver);
+        toolbar_window_initialized_ = true;
+    }
+
+    constexpr ImGuiWindowFlags toolbar_flags = ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoSavedSettings;
+
+    ImGui::Begin("Sketch Toolbar", nullptr, toolbar_flags);
+
+    const bool select_tool = active_tool_ == Tool::Select;
+    if (ImGui::Button(select_tool ? "Select Tool [active]" : "Select Tool")) {
+        active_tool_ = Tool::Select;
+        pending_line_start_.reset();
+    }
+    ImGui::SameLine();
+
+    const bool line_tool = active_tool_ == Tool::Line;
+    if (ImGui::Button(line_tool ? "Add Line [active]" : "Add Line")) {
+        active_tool_ = Tool::Line;
+    }
+    ImGui::SameLine();
+
+    if (active_tool_ == Tool::Line && pending_line_start_.has_value()) {
+        if (ImGui::Button("Cancel Segment")) {
+            pending_line_start_.reset();
+        }
+        ImGui::SameLine();
+    }
+
+    bool snap_state = document.snap_enabled();
+    if (ImGui::Checkbox("Snap", &snap_state)) {
+        document.set_snap_enabled(snap_state);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(ImGui::GetIO().KeyShift ? "Shift: snap OFF" : "Shift: hold to disable snap");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Snap to:");
+    ImGui::Checkbox("Grid", &snap_to_grid_);
+    ImGui::SameLine();
+    ImGui::Checkbox("End", &snap_to_endpoints_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Seg", &snap_to_segments_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Ext", &snap_to_external_);
+
+    ImGui::Separator();
+    if (!document.has_grid_feature()) {
+        if (ImGui::Button("Add Grid Feature")) {
+            document.add_grid_feature_on_plane();
+        }
+    } else {
+        ImGui::TextUnformatted("Grid feature active");
+    }
+
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Plane: Plane.001");
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        show_plane_properties_ = true;
+        request_sync_plane_editor_from_document();
+    }
+
+    ImGui::TextDisabled(active_tool_ == Tool::Line
+        ? "Line: LMB start/end segment, ESC close + rebuild"
+        : "Select: 3D pick enabled, ESC close + rebuild");
+
+    ImGui::End();
+}
+
 void SketchView::draw_overlay(
     SketchDocument& document,
     const ImVec2& viewport_origin,
@@ -168,18 +312,48 @@ void SketchView::draw_overlay(
         ImDrawList* draw_list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         const ImVec2 end{viewport_origin.x + viewport_size.x, viewport_origin.y + viewport_size.y};
         const ImVec2 mouse = ImGui::GetMousePos();
+        const bool shift_pressed = ImGui::GetIO().KeyShift;
+        const bool allow_snap = document.snap_enabled() && !shift_pressed;
         const bool viewport_hovered =
             mouse.x >= viewport_origin.x && mouse.x <= end.x &&
             mouse.y >= viewport_origin.y && mouse.y <= end.y;
 
         draw_list->PushClipRect(viewport_origin, end, true);
 
-        const SnapResult snap = compute_snap(document, viewport_origin, viewport_size, view_projection, mouse);
+        const SnapResult snap = compute_snap(document, viewport_origin, viewport_size, view_projection, mouse, allow_snap);
         const Plane& plane = document.plane();
         const ImVec2 snap_screen = world_to_screen(viewport_origin, viewport_size, view_projection, plane, snap.world);
-        draw_list->AddCircle(snap_screen, 4.5f, IM_COL32(245, 140, 20, 255), 20, 1.5f);
+        ImU32 snap_color = IM_COL32(245, 140, 20, 255);
+        const char* snap_label = "free";
+        switch (snap.kind) {
+        case SnapKind::Endpoint:
+            snap_color = IM_COL32(46, 160, 80, 255);
+            snap_label = "endpoint";
+            break;
+        case SnapKind::Segment:
+            snap_color = IM_COL32(58, 120, 210, 255);
+            snap_label = "segment";
+            break;
+        case SnapKind::External:
+            snap_color = IM_COL32(142, 96, 212, 255);
+            snap_label = "external";
+            break;
+        case SnapKind::Grid:
+            snap_color = IM_COL32(196, 130, 24, 255);
+            snap_label = "grid";
+            break;
+        case SnapKind::None:
+        default:
+            break;
+        }
 
-        if (viewport_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemActive()) {
+        draw_list->AddCircle(snap_screen, 4.5f, snap_color, 20, 1.5f);
+        if (snap.kind != SnapKind::None) {
+            draw_list->AddCircleFilled(snap_screen, 2.2f, snap_color, 12);
+        }
+        draw_list->AddText(ImVec2(snap_screen.x + 8.0f, snap_screen.y - 16.0f), snap_color, snap_label);
+
+        if (active_tool_ == Tool::Line && viewport_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemActive()) {
             if (!pending_line_start_.has_value()) {
                 pending_line_start_ = snap.world;
             } else {
@@ -193,48 +367,14 @@ void SketchView::draw_overlay(
             }
         }
 
-        if (pending_line_start_.has_value() && viewport_hovered) {
+        if (active_tool_ == Tool::Line && pending_line_start_.has_value() && viewport_hovered) {
             const ImVec2 start = world_to_screen(viewport_origin, viewport_size, view_projection, plane, *pending_line_start_);
             draw_list->AddLine(start, snap_screen, IM_COL32(245, 140, 20, 255), 1.5f);
         }
-
-        const ImVec2 strip_min = ImVec2(viewport_origin.x + 8.0f, viewport_origin.y + 8.0f);
-        const ImVec2 strip_max = ImVec2(viewport_origin.x + 680.0f, viewport_origin.y + 36.0f);
-        draw_list->AddRectFilled(strip_min, strip_max, IM_COL32(242, 246, 251, 235), 4.0f);
-        draw_list->AddRect(strip_min, strip_max, IM_COL32(164, 177, 196, 255), 4.0f);
-
-        ImGui::SetNextWindowPos(strip_min);
-        ImGui::SetNextWindowBgAlpha(0.0f);
-        constexpr ImGuiWindowFlags tools_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
-        ImGui::Begin("SketchToolsOverlay", nullptr, tools_flags);
-
-        bool snap_state = document.snap_enabled();
-        if (ImGui::Checkbox("Snap", &snap_state)) {
-            document.set_snap_enabled(snap_state);
-        }
-        ImGui::SameLine();
-
-        if (!document.has_grid_feature()) {
-            if (ImGui::Button("Add Grid Feature")) {
-                document.add_grid_feature_on_plane();
-            }
-        } else {
-            ImGui::TextUnformatted("Grid feature active");
-        }
-
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Plane: Plane.001");
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            show_plane_properties_ = true;
-            request_sync_plane_editor_from_document();
-        }
-
-        ImGui::SameLine();
-        ImGui::TextDisabled("LMB line on plane, ESC close + rebuild");
-        ImGui::End();
-
         draw_list->PopClipRect();
     }
+
+    draw_toolbar(document, viewport_origin);
 
     if (show_plane_properties_) {
         if (sync_plane_editor_from_document_) {

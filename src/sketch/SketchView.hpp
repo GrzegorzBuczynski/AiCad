@@ -15,6 +15,11 @@ namespace sketch {
  */
 class SketchView {
 public:
+    enum class Tool {
+        Select,
+        Line,
+    };
+
     /**
      * @brief Requests opening plane properties window on next draw.
      */
@@ -33,11 +38,29 @@ public:
         const ImVec2& viewport_size,
         const glm::mat4& view_projection);
 
+    /**
+     * @brief Returns whether current sketch tool should block 3D pick clicks.
+     */
+    [[nodiscard]] bool blocks_3d_picking() const;
+
+    /**
+     * @brief Sets additional world-space edge polylines used as snapping guides.
+     * @param edges Picked geometry edges.
+     */
+    void set_external_snap_edges(const geometry::EdgePolylines& edges);
+
 private:
+    enum class SnapKind {
+        None,
+        Grid,
+        Endpoint,
+        Segment,
+        External,
+    };
+
     struct SnapResult {
         glm::vec2 world{0.0f, 0.0f};
-        bool snapped_to_grid = false;
-        bool snapped_to_entity = false;
+        SnapKind kind = SnapKind::None;
     };
 
     [[nodiscard]] ImVec2 world_to_screen(
@@ -57,11 +80,20 @@ private:
         const ImVec2& origin,
         const ImVec2& size,
         const glm::mat4& view_projection,
-        const ImVec2& mouse) const;
+        const ImVec2& mouse,
+        bool allow_snap) const;
 
     void request_sync_plane_editor_from_document();
+    void draw_toolbar(SketchDocument& document, const ImVec2& viewport_origin);
 
     std::optional<glm::vec2> pending_line_start_{};
+    Tool active_tool_ = Tool::Select;
+    geometry::EdgePolylines external_snap_edges_{};
+    bool snap_to_grid_ = true;
+    bool snap_to_endpoints_ = true;
+    bool snap_to_segments_ = true;
+    bool snap_to_external_ = true;
+    bool toolbar_window_initialized_ = false;
     bool show_plane_properties_ = false;
     bool sync_plane_editor_from_document_ = true;
     glm::vec3 plane_origin_edit_{0.0f, 0.0f, 0.0f};

@@ -31,6 +31,10 @@
 namespace {
 
 app::ipc::MainOrchestrator g_orchestrator{};
+constexpr float k_edge_pick_radius_px = 8.0f;
+constexpr float k_edge_pick_world_scale = 35.0f;
+constexpr float k_edge_pick_world_min = 0.02f;
+constexpr float k_edge_pick_world_max = 8.0f;
 
 std::filesystem::path project_root_settings_path() {
 #if defined(VULCANCAD_PROJECT_ROOT)
@@ -817,10 +821,16 @@ void Application::build_docked_layout() {
             pick_request.ray_dir_x = ray->direction.X();
             pick_request.ray_dir_y = ray->direction.Y();
             pick_request.ray_dir_z = ray->direction.Z();
-            // Use zoom-dependent tolerance: 500 pixels converted to world units
-            // at the middle of the view frustum (NDC z=0), scaling with zoom level
-            pick_request.edge_tolerance_mm = static_cast<double>(
-                viewport_panel_.estimate_pick_tolerance_world(ImGui::GetMousePos(), 500.0f));
+            // Convert small screen radius to world-space tolerance and scale it to CAD scene units.
+            // Without scaling this value is often too small, making picks feel pixel-perfect.
+            const float raw_tolerance_world = viewport_panel_.estimate_pick_tolerance_world(
+                ImGui::GetMousePos(),
+                k_edge_pick_radius_px);
+            const float tuned_tolerance_world = std::clamp(
+                raw_tolerance_world * k_edge_pick_world_scale,
+                k_edge_pick_world_min,
+                k_edge_pick_world_max);
+            pick_request.edge_tolerance_mm = static_cast<double>(tuned_tolerance_world);
 
             const app::ipc::GeometryResponse pick_response = g_orchestrator.submit_once(pick_request);
 
@@ -829,14 +839,16 @@ void Application::build_docked_layout() {
                           << ", feature_id=" << pick_response.hit_feature_id << std::endl;
                 feature_tree_panel_.set_selected_feature(pick_response.hit_feature_id);
                 viewport_panel_.set_selected_edges(pick_response.hit_edges);
+                sketch_view_.set_external_snap_edges(pick_response.hit_edges);
             } else if (pick_response.success) {
-                std::cout << "[APP] Hit solid but feature " << pick_response.hit_feature_id
-                          << " not found in tree - clearing selection" << std::endl;
+                std::cout << "[APP] Pick success - no hit" << std::endl;
                 feature_tree_panel_.set_selected_feature(0U);
                 viewport_panel_.set_selected_edges({});
+                sketch_view_.set_external_snap_edges({});
             } else {
                 std::cout << "[APP] Pick failed - no hit" << std::endl;
                 viewport_panel_.set_selected_edges({});
+                sketch_view_.set_external_snap_edges({});
             }
         } else {
             std::cout << "[APP] Click detected but getClickRay returned nullopt" << std::endl;
