@@ -36,6 +36,65 @@ constexpr float k_edge_pick_world_scale = 35.0f;
 constexpr float k_edge_pick_world_min = 0.02f;
 constexpr float k_edge_pick_world_max = 8.0f;
 
+std::optional<std::filesystem::path> first_existing_font_path(std::initializer_list<std::filesystem::path> candidates) {
+    for (const auto& candidate : candidates) {
+        std::error_code error_code;
+        if (std::filesystem::exists(candidate, error_code)) {
+            return candidate;
+        }
+    }
+    return std::nullopt;
+}
+
+void configure_imgui_fonts(ImGuiIO& io) {
+    io.Fonts->Clear();
+
+    constexpr float k_body_size_px = 21.0f;
+    ImFont* body_font = nullptr;
+
+    const auto inter_font = first_existing_font_path({
+        std::filesystem::path("assets/fonts/Inter-Regular.ttf"),
+        std::filesystem::path("assets/env/Inter-Regular.ttf"),
+        std::filesystem::path("C:/Windows/Fonts/Inter-Regular.ttf"),
+        std::filesystem::path("C:/Windows/Fonts/inter.ttf"),
+    });
+
+    if (inter_font.has_value()) {
+        body_font = io.Fonts->AddFontFromFileTTF(inter_font->string().c_str(), k_body_size_px);
+    }
+
+    if (body_font == nullptr) {
+        const auto fallback_font = first_existing_font_path({
+            std::filesystem::path("C:/Windows/Fonts/segoeui.ttf"),
+            std::filesystem::path("C:/Windows/Fonts/arial.ttf"),
+        });
+        if (fallback_font.has_value()) {
+            body_font = io.Fonts->AddFontFromFileTTF(fallback_font->string().c_str(), k_body_size_px);
+        }
+    }
+
+    if (body_font == nullptr) {
+        body_font = io.Fonts->AddFontDefault();
+    }
+
+    io.FontDefault = body_font;
+
+    const auto icon_font = first_existing_font_path({
+        std::filesystem::path("assets/fonts/segmdl2.ttf"),
+        std::filesystem::path("assets/icons/segmdl2.ttf"),
+        std::filesystem::path("C:/Windows/Fonts/segmdl2.ttf"),
+    });
+
+    if (icon_font.has_value()) {
+        ImFontConfig icon_config{};
+        icon_config.MergeMode = true;
+        icon_config.PixelSnapH = true;
+        icon_config.GlyphMinAdvanceX = 14.0f;
+        static const ImWchar icon_ranges[] = {0xE700, 0xEAFF, 0};
+        (void)io.Fonts->AddFontFromFileTTF(icon_font->string().c_str(), 15.0f, &icon_config, icon_ranges);
+    }
+}
+
 std::filesystem::path project_root_settings_path() {
 #if defined(VULCANCAD_PROJECT_ROOT)
     return std::filesystem::path(VULCANCAD_PROJECT_ROOT) / "settings.json";
@@ -658,28 +717,54 @@ bool Application::init_imgui() {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = "assets/env/imgui_layout.ini";
+    configure_imgui_fonts(io);
 
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.95f, 0.97f, 1.0f);
-    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.0f);
-    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.91f, 0.93f, 0.96f, 1.0f);
-    style.Colors[ImGuiCol_PopupBg] = ImVec4(0.97f, 0.98f, 1.00f, 0.98f);
-    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.84f, 0.88f, 0.94f, 1.0f);
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.77f, 0.84f, 0.93f, 1.0f);
-    style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.93f, 0.95f, 0.98f, 1.0f);
-    style.Colors[ImGuiCol_Header] = ImVec4(0.80f, 0.86f, 0.95f, 1.0f);
-    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.70f, 0.82f, 0.96f, 1.0f);
-    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.56f, 0.74f, 0.94f, 1.0f);
-    style.Colors[ImGuiCol_FrameBg] = ImVec4(0.92f, 0.95f, 0.99f, 1.0f);
-    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.84f, 0.90f, 0.98f, 1.0f);
-    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.77f, 0.86f, 0.97f, 1.0f);
-    style.Colors[ImGuiCol_Button] = ImVec4(0.86f, 0.90f, 0.97f, 1.0f);
-    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.74f, 0.84f, 0.96f, 1.0f);
-    style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.62f, 0.76f, 0.94f, 1.0f);
-    style.Colors[ImGuiCol_Text] = ImVec4(0.12f, 0.16f, 0.22f, 1.0f);
-    style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.42f, 0.47f, 0.55f, 1.0f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.73f, 0.79f, 0.88f, 1.0f);
+    style.WindowRounding = 10.0f;
+    style.ChildRounding = 8.0f;
+    style.FrameRounding = 8.0f;
+    style.PopupRounding = 8.0f;
+    style.ScrollbarRounding = 10.0f;
+    style.GrabRounding = 8.0f;
+    style.TabRounding = 7.0f;
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
+    style.PopupBorderSize = 1.0f;
+    style.WindowPadding = ImVec2(10.0f, 9.0f);
+    style.FramePadding = ImVec2(10.0f, 6.0f);
+    style.ItemSpacing = ImVec2(9.0f, 7.0f);
+
+    style.Colors[ImGuiCol_Text] = ImVec4(0.08f, 0.09f, 0.10f, 1.0f);
+    style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.32f, 0.35f, 0.39f, 1.0f);
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.92f, 0.93f, 0.95f, 1.0f);
+    style.Colors[ImGuiCol_ChildBg] = ImVec4(0.95f, 0.96f, 0.97f, 1.0f);
+    style.Colors[ImGuiCol_PopupBg] = ImVec4(0.97f, 0.97f, 0.98f, 0.99f);
+    style.Colors[ImGuiCol_Border] = ImVec4(0.72f, 0.75f, 0.80f, 1.0f);
+    style.Colors[ImGuiCol_FrameBg] = ImVec4(0.88f, 0.90f, 0.93f, 1.0f);
+    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.81f, 0.85f, 0.90f, 1.0f);
+    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.75f, 0.80f, 0.87f, 1.0f);
+    style.Colors[ImGuiCol_TitleBg] = ImVec4(0.83f, 0.86f, 0.90f, 1.0f);
+    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.61f, 0.72f, 0.86f, 1.0f);
+    style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.86f, 0.89f, 0.93f, 1.0f);
+    style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.86f, 0.89f, 0.93f, 1.0f);
+    style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.84f, 0.87f, 0.91f, 1.0f);
+    style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.60f, 0.65f, 0.72f, 1.0f);
+    style.Colors[ImGuiCol_CheckMark] = ImVec4(0.20f, 0.30f, 0.48f, 1.0f);
+    style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.48f, 0.57f, 0.70f, 1.0f);
+    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.36f, 0.47f, 0.64f, 1.0f);
+    style.Colors[ImGuiCol_Button] = ImVec4(0.80f, 0.84f, 0.89f, 1.0f);
+    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.72f, 0.78f, 0.86f, 1.0f);
+    style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.64f, 0.71f, 0.81f, 1.0f);
+    style.Colors[ImGuiCol_Header] = ImVec4(0.80f, 0.84f, 0.89f, 1.0f);
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.72f, 0.78f, 0.86f, 1.0f);
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.64f, 0.71f, 0.81f, 1.0f);
+    style.Colors[ImGuiCol_Tab] = ImVec4(0.83f, 0.87f, 0.91f, 1.0f);
+    style.Colors[ImGuiCol_TabHovered] = ImVec4(0.74f, 0.81f, 0.89f, 1.0f);
+    style.Colors[ImGuiCol_TabSelected] = ImVec4(0.60f, 0.71f, 0.85f, 1.0f);
+    style.Colors[ImGuiCol_TabDimmed] = ImVec4(0.85f, 0.88f, 0.92f, 1.0f);
+    style.Colors[ImGuiCol_TabDimmedSelected] = ImVec4(0.71f, 0.78f, 0.87f, 1.0f);
+    style.Colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.90f, 0.92f, 0.95f, 1.0f);
 
     dock_layout_built_ = false;
     imgui_initialized_ = true;

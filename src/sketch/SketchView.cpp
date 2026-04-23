@@ -244,20 +244,20 @@ void SketchView::draw_toolbar(SketchDocument& document, const ImVec2& viewport_o
     ImGui::Begin("Sketch Toolbar", nullptr, toolbar_flags);
 
     const bool select_tool = active_tool_ == Tool::Select;
-    if (ImGui::Button(select_tool ? "Select Tool [active]" : "Select Tool")) {
+    if (ImGui::Button(select_tool ? "\xE2\x8C\x96 Select Tool [active]" : "\xE2\x8C\x96 Select Tool")) {
         active_tool_ = Tool::Select;
         pending_line_start_.reset();
     }
     ImGui::SameLine();
 
     const bool line_tool = active_tool_ == Tool::Line;
-    if (ImGui::Button(line_tool ? "Add Line [active]" : "Add Line")) {
+    if (ImGui::Button(line_tool ? "\xE2\x9C\x8E Add Line [active]" : "\xE2\x9C\x8E Add Line")) {
         active_tool_ = Tool::Line;
     }
     ImGui::SameLine();
 
     if (active_tool_ == Tool::Line && pending_line_start_.has_value()) {
-        if (ImGui::Button("Cancel Segment")) {
+        if (ImGui::Button("\xE2\x9C\x95 Cancel Segment")) {
             pending_line_start_.reset();
         }
         ImGui::SameLine();
@@ -282,7 +282,7 @@ void SketchView::draw_toolbar(SketchDocument& document, const ImVec2& viewport_o
 
     ImGui::Separator();
     if (!document.has_grid_feature()) {
-        if (ImGui::Button("Add Grid Feature")) {
+        if (ImGui::Button("\xE2\x96\xA6 Add Grid Feature")) {
             document.add_grid_feature_on_plane();
         }
     } else {
