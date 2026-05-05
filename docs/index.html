@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Map Demo</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    body {
+      background: #0b0f12;
+    }
+
+    #app {
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { initCallMap } from "./call_map.js";
+
+    const data = {
+      id: "main",
+      label: "main()",
+      children: [
+        {
+          id: "init",
+          label: "Application::init",
+          children: [
+            { id: "load_settings", label: "load_settings" },
+            { id: "SDL_Init", label: "SDL_Init" },
+            { id: "Window::create", label: "Window::create" },
+            { id: "VulkanContext::init", label: "VulkanContext::init" },
+            { id: "RenderFrame::init", label: "RenderFrame::init" },
+            { id: "init_imgui", label: "init_imgui" },
+            { id: "MainOrchestrator::init", label: "MainOrchestrator::init" },
+            { id: "init_imgui_backend", label: "init_imgui_backend" },
+            {
+              id: "load_model_session",
+              label: "load_model_session",
+              children: [
+                { id: "ModelDeserializer::from_file", label: "ModelDeserializer::from_file" }
+              ]
+            },
+            { id: "FeatureTree::create_feature", label: "FeatureTree::create_feature" },
+            {
+              id: "SketchDocument::solve:init",
+              label: "SketchDocument::solve",
+              children: [
+                { id: "SketchSolver::solve_incremental", label: "SketchSolver::solve_incremental" }
+              ]
+            },
+            { id: "sync_camera_to_viewport:init", label: "sync_camera_to_viewport" }
+          ]
+        },
+        {
+          id: "run",
+          label: "Application::run",
+          children: [
+            {
+              id: "SDL_PollEvent loop",
+              label: "SDL_PollEvent loop",
+              children: [
+                { id: "window_.process_event", label: "window_.process_event" },
+                { id: "camera_.handle_event", label: "camera_.handle_event" },
+                { id: "ImGui_ImplSDL3_ProcessEvent", label: "ImGui_ImplSDL3_ProcessEvent" },
+                {
+                  id: "SketchDocument::exit + build_sketch_segments_for_ipc",
+                  label: "SketchDocument::exit + build_sketch_segments_for_ipc",
+                  children: [
+                    { id: "MainOrchestrator::submit_once RebuildFromSketch", label: "MainOrchestrator::submit_once RebuildFromSketch" }
+                  ]
+                }
+              ]
+            },
+            { id: "MainOrchestrator::submit_once FrameUpdate", label: "MainOrchestrator::submit_once FrameUpdate" },
+            {
+              id: "Application::render_vulkan_frame",
+              label: "Application::render_vulkan_frame",
+              children: [
+                { id: "VulkanContext::begin_frame", label: "VulkanContext::begin_frame" },
+                {
+                  id: "build_docked_layout",
+                  label: "build_docked_layout",
+                  children: [
+                    { id: "FeatureTreePanel::draw", label: "FeatureTreePanel::draw" },
+                    { id: "ViewportPanel::draw", label: "ViewportPanel::draw" },
+                    { id: "PropertiesPanel::draw", label: "PropertiesPanel::draw" },
+                    {
+                      id: "process_feature_tree_actions",
+                      label: "process_feature_tree_actions",
+                      children: [
+                        { id: "FeatureTreePanel::consume_rebuild_intent", label: "FeatureTreePanel::consume_rebuild_intent" },
+                        {
+                          id: "execute_feature_rebuild",
+                          label: "execute_feature_rebuild",
+                          children: [
+                            {
+                              id: "FeatureTree::rebuild",
+                              label: "FeatureTree::rebuild",
+                              children: [
+                                { id: "MainOrchestrator::submit_once RebuildFeature", label: "MainOrchestrator::submit_once RebuildFeature" },
+                                { id: "submit_once Tessellate", label: "submit_once Tessellate" },
+                                { id: "submit_once UploadMesh", label: "submit_once UploadMesh" },
+                                { id: "submit_once Repaint", label: "submit_once Repaint" }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    { id: "SketchView::draw_overlay", label: "SketchView::draw_overlay" },
+                    { id: "SketchDocument::solve:run", label: "SketchDocument::solve (active sketch)" }
+                  ]
+                },
+                { id: "sync_camera_to_viewport:run", label: "sync_camera_to_viewport" },
+                { id: "ImGui_ImplVulkan_RenderDrawData", label: "ImGui_ImplVulkan_RenderDrawData" },
+                { id: "VulkanContext::end_frame", label: "VulkanContext::end_frame" }
+              ]
+            }
+          ]
+        },
+        {
+          id: "shutdown",
+          label: "Application::shutdown",
+          children: [
+            { id: "persist_settings", label: "persist_settings" },
+            { id: "MainOrchestrator::shutdown", label: "MainOrchestrator::shutdown" },
+            { id: "shutdown_imgui", label: "shutdown_imgui" },
+            { id: "RenderFrame::shutdown", label: "RenderFrame::shutdown" },
+            { id: "VulkanContext::shutdown", label: "VulkanContext::shutdown" },
+            { id: "Window::destroy", label: "Window::destroy" },
+            { id: "SDL_Quit", label: "SDL_Quit" }
+          ]
+        }
+      ]
+    };
+
+    initCallMap(document.getElementById("app"), data, {
+      title: "CAD AI Call Map",
+      description: "Interactive call tree rendered as a reusable component."
+    });
+  </script>
+</body>
+</html>

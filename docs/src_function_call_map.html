@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Function Call Map</title>
+  <style>
+    :root {
+      --bg-1: #0f1418;
+      --bg-2: #1d242b;
+      --bg-3: #0b0f12;
+      --panel: rgba(20, 26, 32, 0.85);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e6edf3;
+      --muted: #9aa4af;
+      --accent: #f6c177;
+      --accent-2: #7cc6fe;
+      --node: #111821;
+      --node-border: #2d3946;
+      --node-hover: #1b2430;
+      --edge: rgba(180, 200, 220, 0.35);
+      --highlight: #ffd166;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, rgba(246, 193, 119, 0.12), transparent 60%),
+        radial-gradient(1000px 500px at 90% 20%, rgba(124, 198, 254, 0.14), transparent 60%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+      font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' fill='none'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='.05'/></svg>");
+      mix-blend-mode: soft-light;
+      opacity: 0.4;
+    }
+
+    header {
+      display: grid;
+      gap: 8px;
+      padding: 24px 28px 10px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin: 0;
+      letter-spacing: 0.5px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 900px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 28px 16px;
+    }
+
+    .toolbar input {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel);
+      color: var(--text);
+      min-width: 240px;
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease, border 160ms ease;
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(246, 193, 119, 0.4);
+      background: rgba(30, 40, 50, 0.9);
+    }
+
+    .canvas-wrap {
+      position: relative;
+      height: calc(100vh - 190px);
+      margin: 0 20px 24px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(10, 14, 18, 0.6);
+      box-shadow: var(--shadow);
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+
+    svg:active {
+      cursor: grabbing;
+    }
+
+    .node rect {
+      fill: var(--node);
+      stroke: var(--node-border);
+      stroke-width: 1;
+      rx: 10;
+      ry: 10;
+      transition: fill 160ms ease, stroke 160ms ease;
+    }
+
+    .node:hover rect {
+      fill: var(--node-hover);
+      stroke: rgba(246, 193, 119, 0.5);
+    }
+
+    .node text {
+      fill: var(--text);
+      font-size: 13px;
+      font-family: "IBM Plex Mono", "Fira Code", "Consolas", monospace;
+      pointer-events: none;
+    }
+
+    .node.collapsible text::after {
+      content: "";
+    }
+
+    .node.highlight rect {
+      stroke: var(--highlight);
+      box-shadow: 0 0 0 2px rgba(255, 209, 102, 0.2);
+    }
+
+    .edge {
+      fill: none;
+      stroke: var(--edge);
+      stroke-width: 1.5;
+    }
+
+    .legend {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .legend span {
+      color: var(--text);
+    }
+
+    @media (max-width: 900px) {
+      .canvas-wrap {
+        height: 70vh;
+      }
+
+      header, .toolbar {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header>
+    <h1>Function Call Map</h1>
+    <p>Interactive, horizontal call tree for the core application flow. Drag to pan, use the mouse wheel to zoom, click a node to collapse or expand its branch.</p>
+  </header>
+
+  <div class="toolbar">
+    <input id="search" type="text" placeholder="Filter nodes (type to highlight)" />
+    <button id="expandAll" type="button">Expand all</button>
+    <button id="collapseAll" type="button">Collapse all</button>
+    <button id="fitView" type="button">Fit view</button>
+    <button id="resetView" type="button">Reset view</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <svg id="graph" viewBox="0 0 1200 800" role="img" aria-label="Function call map">
+      <g id="viewport"></g>
+    </svg>
+    <div class="legend">
+      <div><span>Click</span> node to toggle</div>
+      <div><span>Drag</span> to pan</div>
+      <div><span>Wheel</span> to zoom</div>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    const data = {
+      id: "main",
+      label: "main()",
+      children: [
+        {
+          id: "init",
+          label: "Application::init",
+          children: [
+            { id: "load_settings", label: "load_settings" },
+            { id: "SDL_Init", label: "SDL_Init" },
+            { id: "Window::create", label: "Window::create" },
+            { id: "VulkanContext::init", label: "VulkanContext::init" },
+            { id: "RenderFrame::init", label: "RenderFrame::init" },
+            { id: "init_imgui", label: "init_imgui" },
+            { id: "MainOrchestrator::init", label: "MainOrchestrator::init" },
+            { id: "init_imgui_backend", label: "init_imgui_backend" },
+            {
+              id: "load_model_session",
+              label: "load_model_session",
+              children: [
+                { id: "ModelDeserializer::from_file", label: "ModelDeserializer::from_file" }
+              ]
+            },
+            { id: "FeatureTree::create_feature", label: "FeatureTree::create_feature" },
+            {
+              id: "SketchDocument::solve:init",
+              label: "SketchDocument::solve",
+              children: [
+                { id: "SketchSolver::solve_incremental", label: "SketchSolver::solve_incremental" }
+              ]
+            },
+            { id: "sync_camera_to_viewport:init", label: "sync_camera_to_viewport" }
+          ]
+        },
+        {
+          id: "run",
+          label: "Application::run",
+          children: [
+            {
+              id: "SDL_PollEvent loop",
+              label: "SDL_PollEvent loop",
+              children: [
+                { id: "window_.process_event", label: "window_.process_event" },
+                { id: "camera_.handle_event", label: "camera_.handle_event" },
+                { id: "ImGui_ImplSDL3_ProcessEvent", label: "ImGui_ImplSDL3_ProcessEvent" },
+                {
+                  id: "SketchDocument::exit + build_sketch_segments_for_ipc",
+                  label: "SketchDocument::exit + build_sketch_segments_for_ipc",
+                  children: [
+                    { id: "MainOrchestrator::submit_once RebuildFromSketch", label: "MainOrchestrator::submit_once RebuildFromSketch" }
+                  ]
+                }
+              ]
+            },
+            { id: "MainOrchestrator::submit_once FrameUpdate", label: "MainOrchestrator::submit_once FrameUpdate" },
+            {
+              id: "Application::render_vulkan_frame",
+              label: "Application::render_vulkan_frame",
+              children: [
+                { id: "VulkanContext::begin_frame", label: "VulkanContext::begin_frame" },
+                {
+                  id: "build_docked_layout",
+                  label: "build_docked_layout",
+                  children: [
+                    { id: "FeatureTreePanel::draw", label: "FeatureTreePanel::draw" },
+                    { id: "ViewportPanel::draw", label: "ViewportPanel::draw" },
+                    { id: "PropertiesPanel::draw", label: "PropertiesPanel::draw" },
+                    {
+                      id: "process_feature_tree_actions",
+                      label: "process_feature_tree_actions",
+                      children: [
+                        { id: "FeatureTreePanel::consume_rebuild_intent", label: "FeatureTreePanel::consume_rebuild_intent" },
+                        {
+                          id: "execute_feature_rebuild",
+                          label: "execute_feature_rebuild",
+                          children: [
+                            {
+                              id: "FeatureTree::rebuild",
+                              label: "FeatureTree::rebuild",
+                              children: [
+                                { id: "MainOrchestrator::submit_once RebuildFeature", label: "MainOrchestrator::submit_once RebuildFeature" },
+                                { id: "submit_once Tessellate", label: "submit_once Tessellate" },
+                                { id: "submit_once UploadMesh", label: "submit_once UploadMesh" },
+                                { id: "submit_once Repaint", label: "submit_once Repaint" }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    { id: "SketchView::draw_overlay", label: "SketchView::draw_overlay" },
+                    { id: "SketchDocument::solve:run", label: "SketchDocument::solve (active sketch)" }
+                  ]
+                },
+                { id: "sync_camera_to_viewport:run", label: "sync_camera_to_viewport" },
+                { id: "ImGui_ImplVulkan_RenderDrawData", label: "ImGui_ImplVulkan_RenderDrawData" },
+                { id: "VulkanContext::end_frame", label: "VulkanContext::end_frame" }
+              ]
+            }
+          ]
+        },
+        {
+          id: "shutdown",
+          label: "Application::shutdown",
+          children: [
+            { id: "persist_settings", label: "persist_settings" },
+            { id: "MainOrchestrator::shutdown", label: "MainOrchestrator::shutdown" },
+            { id: "shutdown_imgui", label: "shutdown_imgui" },
+            { id: "RenderFrame::shutdown", label: "RenderFrame::shutdown" },
+            { id: "VulkanContext::shutdown", label: "VulkanContext::shutdown" },
+            { id: "Window::destroy", label: "Window::destroy" },
+            { id: "SDL_Quit", label: "SDL_Quit" }
+          ]
+        }
+      ]
+    };
+
+    const svg = document.getElementById("graph");
+    const viewport = document.getElementById("viewport");
+    const searchInput = document.getElementById("search");
+    const expandAllButton = document.getElementById("expandAll");
+    const collapseAllButton = document.getElementById("collapseAll");
+    const fitViewButton = document.getElementById("fitView");
+    const resetViewButton = document.getElementById("resetView");
+
+    const collapsed = new Set();
+    let highlightText = "";
+    let scale = 1;
+    let panX = 40;
+    let panY = 40;
+
+    const layoutConfig = {
+      xGap: 260,
+      yGap: 64,
+      nodePaddingX: 16,
+      nodePaddingY: 10,
+      curve: 40
+    };
+
+    function walkVisible(node, fn) {
+      fn(node);
+      if (collapsed.has(node.id)) {
+        return;
+      }
+      if (node.children) {
+        node.children.forEach((child) => walkVisible(child, fn));
+      }
+    }
+
+    function walkAll(node, fn) {
+      fn(node);
+      if (node.children) {
+        node.children.forEach((child) => walkAll(child, fn));
+      }
+    }
+
+    function visibleChildren(node) {
+      if (collapsed.has(node.id)) {
+        return [];
+      }
+      return node.children || [];
+    }
+
+    function layoutTree(root) {
+      let yCursor = 0;
+
+      function assign(node, depth) {
+        const children = visibleChildren(node);
+        if (!children.length) {
+          node._x = depth * layoutConfig.xGap;
+          node._y = yCursor;
+          yCursor += layoutConfig.yGap;
+          return;
+        }
+
+        const startY = yCursor;
+        children.forEach((child) => assign(child, depth + 1));
+        const endY = yCursor - layoutConfig.yGap;
+        node._x = depth * layoutConfig.xGap;
+        node._y = (startY + endY) / 2;
+      }
+
+      assign(root, 0);
+    }
+
+    function render() {
+      viewport.innerHTML = "";
+      layoutTree(data);
+
+      const nodes = [];
+      const edges = [];
+
+      walkVisible(data, (node) => {
+        nodes.push(node);
+        const children = visibleChildren(node);
+        children.forEach((child) => {
+          edges.push({ from: node, to: child });
+        });
+      });
+
+      edges.forEach((edge) => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const x1 = edge.from._x + 160;
+        const y1 = edge.from._y;
+        const x2 = edge.to._x - 20;
+        const y2 = edge.to._y;
+        const c = layoutConfig.curve;
+        const d = `M ${x1} ${y1} C ${x1 + c} ${y1}, ${x2 - c} ${y2}, ${x2} ${y2}`;
+        path.setAttribute("d", d);
+        path.setAttribute("class", "edge");
+        viewport.appendChild(path);
+      });
+
+      nodes.forEach((node) => {
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("class", "node" + (node.children && node.children.length ? " collapsible" : ""));
+        group.setAttribute("transform", `translate(${node._x}, ${node._y})`);
+        group.dataset.id = node.id;
+
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.textContent = node.label;
+        text.setAttribute("x", layoutConfig.nodePaddingX);
+        text.setAttribute("y", 0);
+        text.setAttribute("dominant-baseline", "middle");
+
+        group.appendChild(rect);
+        group.appendChild(text);
+        viewport.appendChild(group);
+
+        const textWidth = text.getComputedTextLength();
+        const width = Math.max(140, textWidth + layoutConfig.nodePaddingX * 2);
+        const height = 32 + layoutConfig.nodePaddingY;
+        rect.setAttribute("width", width);
+        rect.setAttribute("height", height);
+        rect.setAttribute("y", -height / 2);
+
+        text.setAttribute("y", 0);
+
+        if (highlightText && node.label.toLowerCase().includes(highlightText)) {
+          group.classList.add("highlight");
+        }
+
+        group.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (!node.children || !node.children.length) {
+            return;
+          }
+          if (collapsed.has(node.id)) {
+            collapsed.delete(node.id);
+          } else {
+            collapsed.add(node.id);
+          }
+          render();
+        });
+
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = node.label;
+        group.appendChild(title);
+      });
+
+      applyTransform();
+    }
+
+    function applyTransform() {
+      viewport.setAttribute("transform", `translate(${panX} ${panY}) scale(${scale})`);
+    }
+
+    function fitView() {
+      const bbox = viewport.getBBox();
+      const viewWidth = svg.clientWidth || 1200;
+      const viewHeight = svg.clientHeight || 800;
+      const padding = 80;
+      const scaleX = (viewWidth - padding) / bbox.width;
+      const scaleY = (viewHeight - padding) / bbox.height;
+      scale = Math.min(scaleX, scaleY, 1.2);
+      panX = (viewWidth - bbox.width * scale) / 2 - bbox.x * scale;
+      panY = (viewHeight - bbox.height * scale) / 2 - bbox.y * scale;
+      applyTransform();
+    }
+
+    function resetView() {
+      scale = 1;
+      panX = 40;
+      panY = 40;
+      applyTransform();
+    }
+
+    let isPanning = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    svg.addEventListener("mousedown", (event) => {
+      isPanning = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (!isPanning) {
+        return;
+      }
+      const dx = event.clientX - lastX;
+      const dy = event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      panX += dx;
+      panY += dy;
+      applyTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isPanning = false;
+    });
+
+    svg.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const direction = Math.sign(event.deltaY);
+      const zoom = direction > 0 ? 0.9 : 1.1;
+      const rect = svg.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      const prevScale = scale;
+      scale = Math.min(2.2, Math.max(0.45, scale * zoom));
+      const scaleChange = scale / prevScale;
+      panX = offsetX - (offsetX - panX) * scaleChange;
+      panY = offsetY - (offsetY - panY) * scaleChange;
+      applyTransform();
+    }, { passive: false });
+
+    searchInput.addEventListener("input", (event) => {
+      highlightText = event.target.value.trim().toLowerCase();
+      render();
+    });
+
+    expandAllButton.addEventListener("click", () => {
+      collapsed.clear();
+      render();
+    });
+
+    collapseAllButton.addEventListener("click", () => {
+      collapsed.clear();
+      walkAll(data, (node) => {
+        if (node.children && node.children.length) {
+          collapsed.add(node.id);
+        }
+      });
+      collapsed.delete("main");
+      render();
+    });
+
+    fitViewButton.addEventListener("click", fitView);
+    resetViewButton.addEventListener("click", resetView);
+
+    window.addEventListener("resize", () => {
+      fitView();
+    });
+
+    render();
+    fitView();
+  </script>
+</body>
+</html>
